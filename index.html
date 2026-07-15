@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Turntable</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: #131318;
+        color: #eaeaf0;
+        font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+        cursor: grab;
+        touch-action: none;
+      }
+      #stage.dragging { cursor: grabbing; }
+      #stage.dropping::after {
+        content: "Drop image to place on screen";
+        position: absolute;
+        top: 16px;
+        bottom: 16px;
+        left: 16px;
+        right: 316px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px dashed #d9a441;
+        border-radius: 16px;
+        background: rgba(19, 19, 24, 0.72);
+        color: #d9a441;
+        font: 600 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.06em;
+        pointer-events: none;
+      }
+      .wordmark {
+        position: fixed;
+        top: 20px;
+        left: 22px;
+        user-select: none;
+        pointer-events: none;
+        mix-blend-mode: difference;
+      }
+      .wordmark strong {
+        display: block;
+        font: 700 15px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.08em;
+        color: #fff;
+      }
+      .wordmark span {
+        display: block;
+        margin-top: 3px;
+        font: 500 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.22em;
+        color: #999;
+        text-transform: uppercase;
+      }
+      .hint {
+        position: fixed;
+        left: 22px;
+        bottom: 18px;
+        color: #999;
+        font: 500 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.04em;
+        user-select: none;
+        pointer-events: none;
+        mix-blend-mode: difference;
+      }
+
+      /* ---------- panel ---------- */
+      #panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 300px;
+        padding: 18px 16px 28px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        background: rgba(24, 24, 27, 0.88);
+        backdrop-filter: blur(24px) saturate(1.3);
+        -webkit-backdrop-filter: blur(24px) saturate(1.3);
+        box-shadow:
+          inset 1px 0 0 rgba(255, 255, 255, 0.06),
+          -12px 0 32px rgba(0, 0, 0, 0.25);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+      }
+      .sec-title {
+        font: 600 10.5px/1 system-ui, sans-serif;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #9a9aa2;
+        margin: 20px 2px 9px;
+      }
+      .sec-title:first-child { margin-top: 2px; }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        appearance: none;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.07);
+        color: #d6d6dc;
+        font: 500 12.5px/1 system-ui, sans-serif;
+        cursor: pointer;
+        transition-property: background-color, color, transform;
+        transition-duration: 0.15s;
+        position: relative;
+      }
+      .chip::after { /* extend hit area */
+        content: "";
+        position: absolute;
+        inset: -3px;
+      }
+      .chip:hover { background: rgba(255, 255, 255, 0.11); }
+      .chip:active { transform: scale(0.96); }
+      .chip.on {
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+      }
+
+      .selectwrap {
+        position: relative;
+      }
+      .selectwrap::after {
+        content: "";
+        position: absolute;
+        right: 13px;
+        top: 50%;
+        width: 7px;
+        height: 7px;
+        border-right: 1.5px solid #9a9aa2;
+        border-bottom: 1.5px solid #9a9aa2;
+        transform: translateY(-70%) rotate(45deg);
+        pointer-events: none;
+      }
+      select {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.07);
+        color: #fff;
+        font: 500 13px/1 system-ui, sans-serif;
+        cursor: pointer;
+        transition-property: background-color;
+        transition-duration: 0.15s;
+      }
+      select:hover { background-color: rgba(255, 255, 255, 0.11); }
+      select:focus-visible, .chip:focus-visible, .thumb:focus-visible,
+      .btn:focus-visible, .scrub:focus-visible, .switch input:focus-visible + .track {
+        outline: 2px solid #d9a441;
+        outline-offset: 2px;
+      }
+
+      .scrub {
+        position: relative;
+        height: 34px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.07);
+        overflow: hidden;
+        cursor: ew-resize;
+        margin-bottom: 6px;
+        touch-action: none;
+      }
+      .scrub .fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 50%;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .scrub .lbl, .scrub .val {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        font: 500 12px/1 system-ui, sans-serif;
+        pointer-events: none;
+      }
+      .scrub .lbl { left: 11px; color: #b9b9c1; }
+      .scrub .val {
+        right: 11px;
+        color: #fff;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+      .tab {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        border-radius: 7px;
+        padding: 7px 11px;
+        color: #9a9aa2;
+        font: 500 12.5px/1 system-ui, sans-serif;
+        cursor: pointer;
+        transition-property: background-color, color;
+        transition-duration: 0.15s;
+      }
+      .tab:hover { color: #d6d6dc; }
+      .tab.on {
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff;
+      }
+
+      .thumbs {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+      }
+      .thumb {
+        appearance: none;
+        border: 0;
+        padding: 0;
+        aspect-ratio: 8 / 5;
+        border-radius: 6px;
+        background-size: cover;
+        background-position: center;
+        cursor: pointer;
+        outline: 1px solid rgba(255, 255, 255, 0.1);
+        outline-offset: -1px;
+        transition-property: transform, box-shadow;
+        transition-duration: 0.15s;
+        position: relative;
+      }
+      .thumb::after {
+        content: "";
+        position: absolute;
+        inset: -3px;
+      }
+      .thumb:hover { transform: translateY(-1px); }
+      .thumb:active { transform: scale(0.96); }
+      .thumb.on {
+        box-shadow: 0 0 0 2px #d9a441;
+        outline-color: transparent;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 34px;
+        padding: 2px 2px;
+      }
+      .row label {
+        font: 500 13px/1 system-ui, sans-serif;
+        color: #d6d6dc;
+      }
+      .switch {
+        position: relative;
+        display: inline-flex;
+        padding: 6px 0; /* 40px-ish hit area */
+      }
+      .switch input {
+        position: absolute;
+        opacity: 0;
+        inset: 0;
+        margin: 0;
+        cursor: pointer;
+      }
+      .switch .track {
+        width: 36px;
+        height: 21px;
+        border-radius: 11px;
+        background: rgba(255, 255, 255, 0.14);
+        position: relative;
+        transition-property: background-color;
+        transition-duration: 0.18s;
+        pointer-events: none;
+      }
+      .switch .track::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        transition-property: transform;
+        transition-duration: 0.18s;
+        transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+      }
+      .switch input:checked + .track { background: #d9a441; }
+      .switch input:checked + .track::after { transform: translateX(15px); }
+
+      .btn {
+        appearance: none;
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        padding: 11px;
+        font: 600 13px/1 system-ui, sans-serif;
+        cursor: pointer;
+        background: #d9a441;
+        color: #1a1409;
+        transition-property: filter, transform;
+        transition-duration: 0.15s;
+      }
+      .btn:hover { filter: brightness(1.08); }
+      .btn:active { transform: scale(0.96); }
+      .btn.ghost {
+        background: rgba(255, 255, 255, 0.07);
+        color: #d6d6dc;
+        margin-top: 8px;
+      }
+      .btn.ghost:hover { background: rgba(255, 255, 255, 0.11); filter: none; }
+
+      @media (max-width: 760px) {
+        #panel {
+          top: auto;
+          left: 0;
+          right: 0;
+          width: auto;
+          max-height: 48vh;
+          border-radius: 16px 16px 0 0;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.06),
+            0 -12px 32px rgba(0, 0, 0, 0.35);
+        }
+        #stage.dropping::after { right: 16px; }
+        .hint { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div class="wordmark">
+      <strong>TURNTABLE</strong>
+      <span>3D device shots</span>
+    </div>
+
+    <div class="hint">drag to rotate · scroll to zoom · drop or paste an image anywhere</div>
+
+    <input type="file" id="fileInput" accept="image/*" hidden />
+
+    <aside id="panel" aria-label="Scene controls"></aside>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
