@@ -222,6 +222,11 @@ toggleRow("Shadows", true, scene.setShadows);
 toggleRow("Float", scene.defaults.float, scene.setFloat);
 toggleRow("Auto-rotate", false, scene.setSpin);
 scrubber({
+  label: "Distance", min: 0.3, max: 4, value: 1, step: 0.05,
+  fmt: (v) => v.toFixed(2),
+  onChange: scene.setWallGap,
+});
+scrubber({
   label: "Intensity", min: 0.4, max: 2, value: 1, step: 0.05,
   fmt: (v) => v.toFixed(2),
   onChange: scene.setLightMult,

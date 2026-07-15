@@ -8,7 +8,9 @@ const stage = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// VSM: the only built-in type where shadow.radius gives a real,
+// dialable penumbra (PCFSoft ignores radius)
+renderer.shadowMap.type = THREE.VSMShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 stage.appendChild(renderer.domElement);
 
@@ -40,7 +42,7 @@ key.shadow.camera.right = 9;
 key.shadow.camera.top = 9;
 key.shadow.camera.bottom = -5;
 key.shadow.camera.far = 40;
-key.shadow.radius = 10;
+key.shadow.blurSamples = 16;
 key.shadow.bias = -0.0004;
 scene.add(key);
 
@@ -87,6 +89,17 @@ const wall = new THREE.Mesh(new THREE.PlaneGeometry(90, 45), wallMat);
 wall.position.set(0, 10, -1.0);
 wall.receiveShadow = true;
 scene.add(wall);
+
+// the device ↔ wall gap drives the whole shadow character, like a real
+// studio wall: the lateral offset comes free from light projection, the
+// penumbra widens with the gap, and the shadow fades as the device
+// moves away from the surface
+export function setWallGap(g) {
+  wall.position.z = -g;
+  key.shadow.radius = 2 + g * 7;
+  key.shadow.intensity = Math.max(0.3, 1.05 - g * 0.16);
+}
+setWallGap(1);
 
 const floorMat = new THREE.MeshStandardMaterial({ color: 0xcfcac2, roughness: 0.9, metalness: 0 });
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(90, 46), floorMat);
