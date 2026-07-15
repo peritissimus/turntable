@@ -215,6 +215,7 @@ section("Background");
 // ---------- SCREEN ----------
 section("Screen");
 button("Upload Screenshot…", "ghost", scene.openUpload).style.marginTop = "0";
+toggleRow("Glass glare", true, scene.setGlare);
 
 // ---------- LIGHT & SHADOWS ----------
 section("Light & shadows");
@@ -234,6 +235,33 @@ scrubber({
 
 // ---------- EXPORT ----------
 section("Export");
+const ASPECTS = { Auto: null, "1:1": 1, "4:5": 0.8, "16:9": 16 / 9 };
+const guide = el("div");
+guide.id = "frameGuide";
+document.body.appendChild(guide);
+let guideAspect = null;
+
+function updateGuide() {
+  if (!guideAspect) {
+    guide.style.display = "none";
+    return;
+  }
+  let w = innerWidth, h = Math.round(innerWidth / guideAspect);
+  if (h > innerHeight) { h = innerHeight; w = Math.round(innerHeight * guideAspect); }
+  guide.style.display = "block";
+  guide.style.width = w + "px";
+  guide.style.height = h + "px";
+  guide.style.left = (innerWidth - w) / 2 + "px";
+  guide.style.top = (innerHeight - h) / 2 + "px";
+}
+window.addEventListener("resize", updateGuide);
+
+chipGroup(Object.keys(ASPECTS), "Auto", (label) => {
+  guideAspect = ASPECTS[label];
+  scene.setExportAspect(guideAspect);
+  updateGuide();
+});
+panel.appendChild(el("div")).style.height = "8px";
 chipGroup(["1×", "2×", "3×"], "2×", (label) => {
   scene.setExportScale(parseInt(label, 10));
 });

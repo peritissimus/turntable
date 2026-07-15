@@ -1,7 +1,9 @@
 import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const PANEL_W = 300;
+let exportAspect = null; // width/height crop, null = full canvas
 
 // ---------- renderer / scene ----------
 const stage = document.getElementById("stage");
@@ -17,12 +19,19 @@ stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 120);
 
+// image-based lighting: without an environment the metal frame has
+// nothing to reflect and reads as dead plastic
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+pmrem.dispose();
+
 function layout() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h);
   camera.aspect = w / h;
-  // keep the device centered in the area left of the panel
-  if (w > 760) camera.setViewOffset(w, h, PANEL_W / 2, 0, w, h);
+  // keep the device centered in the area left of the panel — except
+  // when a crop guide is up, where preview must match the export frame
+  if (w > 760 && !exportAspect) camera.setViewOffset(w, h, PANEL_W / 2, 0, w, h);
   else camera.clearViewOffset();
   camera.updateProjectionMatrix();
 }
@@ -55,16 +64,19 @@ const LIGHTING = {
     key: { intensity: 2.2, color: 0xffffff, pos: [4, 5.5, 7.5] },
     hemi: 0.9,
     rim: { intensity: 0.8, color: 0xd9a441, pos: [-5, 3, -4] },
+    env: 0.45,
   },
   bright: {
     key: { intensity: 3.4, color: 0xffffff, pos: [3, 7, 9] },
     hemi: 1.7,
     rim: { intensity: 1.3, color: 0xffffff, pos: [-6, 4, -2] },
+    env: 0.85,
   },
   noir: {
     key: { intensity: 1.7, color: 0xc9d4f2, pos: [-6, 5, 4] },
     hemi: 0.18,
     rim: { intensity: 1.8, color: 0x8fa8ff, pos: [6, 2, -3] },
+    env: 0.12,
   },
 };
 
@@ -80,6 +92,7 @@ function applyLighting() {
   rim.intensity = L.rim.intensity * lightMult;
   rim.color.set(L.rim.color);
   rim.position.set(...L.rim.pos);
+  scene.environmentIntensity = L.env * lightMult;
 }
 applyLighting();
 
@@ -154,6 +167,25 @@ function vGrad(g, w, h, top, bottom) {
   grad.addColorStop(1, bottom);
   g.fillStyle = grad;
   g.fillRect(0, 0, w, h);
+}
+
+// studio wall finish: a soft light pool behind the device (vignette)
+// plus film grain, which also kills gradient banding
+function studioFinish(g, w, h) {
+  const v = g.createRadialGradient(w / 2, h * 0.42, Math.min(w, h) * 0.22, w / 2, h * 0.42, Math.max(w, h) * 0.78);
+  v.addColorStop(0, "rgba(0,0,0,0)");
+  v.addColorStop(1, "rgba(0,0,0,0.32)");
+  g.fillStyle = v;
+  g.fillRect(0, 0, w, h);
+  const img = g.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (Math.random() - 0.5) * 9;
+    d[i] += n;
+    d[i + 1] += n;
+    d[i + 2] += n;
+  }
+  g.putImageData(img, 0, 0);
 }
 
 function blob(g, w, h, cx, cy, cr, color, alpha) {
@@ -281,29 +313,27 @@ let bgSel = { tab: "wallpapers", index: 0 };
 export function setBackground(tab, index) {
   bgSel = { tab, index };
   const item = BACKGROUNDS[tab][index];
-  if (tab === "colors") {
-    wallMat.map = null;
-    wallMat.color.set(item.hex);
-    floorMat.color.set(item.hex).multiplyScalar(0.82);
-  } else {
-    const k = tab + index;
-    if (!wallTexCache[k]) {
-      const t = drawToTexture(item.draw, 1024, 640);
-      // show the full artwork in a ~20x12.5 world-unit window around the
-      // device; clamped edges extend outward across the rest of the wall.
-      // uv_tex = uv_wall * repeat + offset, so repeat = 1/window, and the
-      // window in wall-uv space is u 0.389..0.611, v 0.188..0.466
-      t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-      const u0 = 0.5 - 10 / 90, uw = 20 / 90;
-      const v0 = (2.2 - 6.25 + 12.5) / 45, vw = 12.5 / 45;
-      t.repeat.set(1 / uw, 1 / vw);
-      t.offset.set(-u0 / uw, -v0 / vw);
-      wallTexCache[k] = t;
-    }
-    wallMat.map = wallTexCache[k];
-    wallMat.color.set(0xffffff);
-    floorMat.color.set(item.floor);
+  const k = tab + index;
+  if (!wallTexCache[k]) {
+    const art = tab === "colors"
+      ? (g, w, h) => { g.fillStyle = item.hex; g.fillRect(0, 0, w, h); }
+      : item.draw;
+    const t = drawToTexture((g, w, h) => { art(g, w, h); studioFinish(g, w, h); }, 1024, 640);
+    // show the full artwork in a ~20x12.5 world-unit window around the
+    // device; clamped edges extend outward across the rest of the wall.
+    // uv_tex = uv_wall * repeat + offset, so repeat = 1/window, and the
+    // window in wall-uv space is u 0.389..0.611, v 0.188..0.466
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    const u0 = 0.5 - 10 / 90, uw = 20 / 90;
+    const v0 = (2.2 - 6.25 + 12.5) / 45, vw = 12.5 / 45;
+    t.repeat.set(1 / uw, 1 / vw);
+    t.offset.set(-u0 / uw, -v0 / vw);
+    wallTexCache[k] = t;
   }
+  wallMat.map = wallTexCache[k];
+  wallMat.color.set(0xffffff);
+  if (tab === "colors") floorMat.color.set(item.hex).multiplyScalar(0.82);
+  else floorMat.color.set(item.floor);
   wallMat.needsUpdate = true;
 }
 
@@ -381,6 +411,39 @@ const mirrorDarkMat = darkMat.clone();
   m.side = THREE.DoubleSide;
 });
 
+// glass: a faint diagonal light sweep floating just above the screen
+function glareTexture() {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 1024;
+  const g = c.getContext("2d");
+  const grad = g.createLinearGradient(0, 1024, 512, 0);
+  grad.addColorStop(0.38, "rgba(255,255,255,0)");
+  grad.addColorStop(0.46, "rgba(255,255,255,0.30)");
+  grad.addColorStop(0.52, "rgba(255,255,255,0.05)");
+  grad.addColorStop(0.6, "rgba(255,255,255,0.2)");
+  grad.addColorStop(0.68, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 512, 1024);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const glareMat = new THREE.MeshBasicMaterial({
+  map: glareTexture(),
+  transparent: true,
+  opacity: 0.35,
+  blending: THREE.AdditiveBlending,
+  toneMapped: false,
+  depthWrite: false,
+});
+const glareMeshes = [];
+
+export function setGlare(on) {
+  glareMeshes.forEach((m) => { m.visible = on; });
+}
+
 function fitCover() {
   const t = current.tex;
   const imgA = current.aspect;
@@ -408,6 +471,12 @@ function buildPhone(mats) {
   const scr = new THREE.Mesh(screenGeo(1.39, 2.94, 0.21), mats.screen);
   scr.position.z = 0.075;
   g.add(scr);
+  if (mats.glare) {
+    const gl = new THREE.Mesh(screenGeo(1.39, 2.94, 0.21), mats.glare);
+    gl.position.z = 0.079;
+    g.add(gl);
+    glareMeshes.push(gl);
+  }
   // dynamic island
   const island = new THREE.Mesh(screenGeo(0.36, 0.1, 0.05), mats.dark);
   island.position.set(0, 1.3, 0.077);
@@ -432,6 +501,12 @@ function buildTablet(mats) {
   const scr = new THREE.Mesh(screenGeo(2.19, 2.99, 0.1), mats.screen);
   scr.position.z = 0.075;
   g.add(scr);
+  if (mats.glare) {
+    const gl = new THREE.Mesh(screenGeo(2.19, 2.99, 0.1), mats.glare);
+    gl.position.z = 0.079;
+    g.add(gl);
+    glareMeshes.push(gl);
+  }
   g.position.y = 1.85;
   return { group: g, aspect: 2.19 / 2.99 };
 }
@@ -445,6 +520,12 @@ function buildLaptop(mats) {
   const scr = new THREE.Mesh(screenGeo(3.78, 2.33, 0.05), mats.screen);
   scr.position.set(0, 1.275, 0.062);
   lid.add(scr);
+  if (mats.glare) {
+    const gl = new THREE.Mesh(screenGeo(3.78, 2.33, 0.05), mats.glare);
+    gl.position.set(0, 1.275, 0.066);
+    lid.add(gl);
+    glareMeshes.push(gl);
+  }
   lid.rotation.x = -0.16;
   g.add(lid);
 
@@ -467,11 +548,17 @@ function buildCard(mats) {
   const scr = new THREE.Mesh(screenGeo(3.58, 2.33, 0.08), mats.screen);
   scr.position.z = 0.055;
   g.add(scr);
+  if (mats.glare) {
+    const gl = new THREE.Mesh(screenGeo(3.58, 2.33, 0.08), mats.glare);
+    gl.position.z = 0.059;
+    g.add(gl);
+    glareMeshes.push(gl);
+  }
   g.position.y = 1.85;
   return { group: g, aspect: 3.58 / 2.33 };
 }
 
-const realMats = { body: bodyMat, dark: darkMat, screen: screenMat };
+const realMats = { body: bodyMat, dark: darkMat, screen: screenMat, glare: glareMat };
 const mirrorMats = { body: mirrorBodyMat, dark: mirrorDarkMat, screen: mirrorScreenMat };
 const builders = { phone: buildPhone, tablet: buildTablet, laptop: buildLaptop, card: buildCard };
 
@@ -506,10 +593,15 @@ setBackground(bgSel.tab, bgSel.index);
 setBackgroundType("flat");
 
 // ---------- rotation ----------
+// baseRot is what renders; tRot is the target it eases toward, so
+// angle presets glide instead of snapping. Direct input (drag,
+// scrubbers) writes both for zero-lag manipulation.
 const baseRot = { x: 0, y: 0, z: 0 }; // degrees
+const tRot = { x: 0, y: 0, z: 0 };
 
 export function setRotation(axis, deg) {
   baseRot[axis] = deg;
+  tRot[axis] = deg;
 }
 
 // ui hook: fires when the scene itself changes rotation (drag, spin,
@@ -542,8 +634,8 @@ stage.addEventListener("pointerdown", (e) => {
 });
 stage.addEventListener("pointermove", (e) => {
   if (!dragging) return;
-  baseRot.y = wrap180(baseRot.y + (e.clientX - px) * 0.35);
-  baseRot.x = wrap180(baseRot.x + (e.clientY - py) * 0.35);
+  baseRot.y = tRot.y = wrap180(baseRot.y + (e.clientX - px) * 0.35);
+  baseRot.x = tRot.x = wrap180(baseRot.x + (e.clientY - py) * 0.35);
   px = e.clientX;
   py = e.clientY;
   if (rotationHook) rotationHook({ ...baseRot }, true);
@@ -578,10 +670,10 @@ export function setAngle(name) {
   const a = ANGLES[name];
   if (!a) return;
   view.tRadius = a.zoom * (devices[activeDevice].radius / 8.5);
-  baseRot.x = a.rot[0];
-  baseRot.y = a.rot[1];
-  baseRot.z = a.rot[2];
-  return { ...baseRot };
+  tRot.x = a.rot[0];
+  tRot.y = a.rot[1];
+  tRot.z = a.rot[2];
+  return { ...tRot };
 }
 
 export function resetCamera() {
@@ -627,6 +719,11 @@ export function setSpin(on) {
 
 export function setExportScale(n) {
   exportScale = n;
+}
+
+export function setExportAspect(a) {
+  exportAspect = a;
+  layout();
 }
 
 export const defaults = {
@@ -693,7 +790,20 @@ export function exportPNG() {
   renderer.setPixelRatio(1);
   renderer.setSize(w * exportScale, h * exportScale, false);
   renderer.render(scene, camera);
-  const url = renderer.domElement.toDataURL("image/png");
+  let url;
+  if (exportAspect) {
+    // crop the largest centered window matching the chosen aspect
+    const cw = renderer.domElement.width, ch = renderer.domElement.height;
+    let tw = cw, th = Math.round(cw / exportAspect);
+    if (th > ch) { th = ch; tw = Math.round(ch * exportAspect); }
+    const c = document.createElement("canvas");
+    c.width = tw;
+    c.height = th;
+    c.getContext("2d").drawImage(renderer.domElement, (cw - tw) / 2, (ch - th) / 2, tw, th, 0, 0, tw, th);
+    url = c.toDataURL("image/png");
+  } else {
+    url = renderer.domElement.toDataURL("image/png");
+  }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(w, h, false);
   layout();
@@ -711,9 +821,12 @@ function tick() {
   requestAnimationFrame(tick);
   const t = clock.getElapsedTime();
   if (state.spin && !dragging) {
-    baseRot.y = wrap180(baseRot.y + 0.2);
+    baseRot.y = tRot.y = wrap180(baseRot.y + 0.2);
     if (rotationHook) rotationHook({ ...baseRot }, false);
   }
+  baseRot.x += (tRot.x - baseRot.x) * 0.1;
+  baseRot.y += (tRot.y - baseRot.y) * 0.1;
+  baseRot.z += (tRot.z - baseRot.z) * 0.1;
   view.radius += (view.tRadius - view.radius) * 0.12;
   applyCamera();
 

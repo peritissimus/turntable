@@ -75,12 +75,22 @@
         mix-blend-mode: difference;
       }
 
+      #frameGuide {
+        position: fixed;
+        display: none;
+        pointer-events: none;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        box-shadow: 0 0 0 9999px rgba(10, 10, 13, 0.5);
+        z-index: 5;
+      }
+
       /* ---------- panel ---------- */
       #panel {
         position: fixed;
         top: 0;
         right: 0;
         bottom: 0;
+        z-index: 10;
         width: 300px;
         padding: 18px 16px 28px;
         overflow-y: auto;
