@@ -11,7 +11,7 @@
         --accent: #0a84ff;
         --accent-hover: #2492ff;
         --panel-width: 352px;
-        --panel-bg: rgba(28, 28, 30, 0.82);
+        --panel-bg: linear-gradient(180deg, rgba(41, 41, 44, 0.985), rgba(25, 25, 28, 0.985));
         --card-bg: rgba(255, 255, 255, 0.055);
         --control-bg: rgba(255, 255, 255, 0.075);
         --control-hover: rgba(255, 255, 255, 0.115);
@@ -74,10 +74,8 @@
         min-height: 44px;
         padding: 7px 14px 7px 8px;
         border-radius: 22px;
-        background: rgba(20, 20, 22, 0.68);
+        background: rgba(20, 20, 22, 0.92);
         box-shadow: var(--ring), 0 10px 32px rgba(0, 0, 0, 0.16);
-        backdrop-filter: blur(20px) saturate(1.35);
-        -webkit-backdrop-filter: blur(20px) saturate(1.35);
         pointer-events: none;
       }
       .stage-brand__mark {
@@ -114,10 +112,8 @@
         padding: 0 13px;
         border-radius: 18px;
         color: rgba(255, 255, 255, 0.72);
-        background: rgba(20, 20, 22, 0.58);
+        background: rgba(20, 20, 22, 0.84);
         box-shadow: var(--ring), 0 8px 24px rgba(0, 0, 0, 0.12);
-        backdrop-filter: blur(18px) saturate(1.25);
-        -webkit-backdrop-filter: blur(18px) saturate(1.25);
         font-size: 11.5px;
         pointer-events: none;
       }
@@ -155,9 +151,6 @@
           0 1px 0 rgba(255, 255, 255, 0.08) inset,
           0 24px 70px rgba(0, 0, 0, 0.34),
           0 4px 16px rgba(0, 0, 0, 0.22);
-        backdrop-filter: blur(34px) saturate(1.4);
-        -webkit-backdrop-filter: blur(34px) saturate(1.4);
-        animation: inspector-in 420ms var(--ease) both;
       }
       .panel-header {
         flex: 0 0 auto;
@@ -237,19 +230,7 @@
         border-radius: 16px;
         background: var(--card-bg);
         box-shadow: var(--ring), inset 0 1px 0 rgba(255, 255, 255, 0.025);
-        opacity: 0;
-        transform: translateY(8px);
-        animation: section-in 380ms var(--ease) forwards;
       }
-      .control-section:nth-child(1) { animation-delay: 50ms; }
-      .control-section:nth-child(2) { animation-delay: 95ms; }
-      .control-section:nth-child(3) { animation-delay: 140ms; }
-      .control-section:nth-child(4) { animation-delay: 185ms; }
-      .control-section:nth-child(5) { animation-delay: 230ms; }
-      .control-section:nth-child(6) { animation-delay: 275ms; }
-      .control-section:nth-child(7) { animation-delay: 320ms; }
-      .control-section:nth-child(8) { animation-delay: 365ms; }
-      .control-section:nth-child(9) { animation-delay: 410ms; }
       .sec-title {
         margin: 0 1px 10px;
         color: var(--text-secondary);
@@ -386,7 +367,7 @@
 
       .tabs {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 3px;
         margin-bottom: 10px;
         padding: 3px;
@@ -552,14 +533,6 @@
       .control-gap { height: 2px; }
       .control-gap.compact { height: 0; }
 
-      @keyframes inspector-in {
-        from { opacity: 0; transform: translateX(12px) scale(0.985); filter: blur(5px); }
-        to { opacity: 1; transform: translateX(0) scale(1); filter: blur(0); }
-      }
-      @keyframes section-in {
-        to { opacity: 1; transform: translateY(0); }
-      }
-
       @media (max-width: 760px) {
         #panel {
           top: auto;
@@ -597,7 +570,7 @@
       </div>
       <div class="stage-brand__copy">
         <strong>Turntable</strong>
-        <span>Device studio</span>
+        <span>Photoreal device studio</span>
       </div>
     </div>
 
@@ -620,7 +593,7 @@
         </div>
         <div class="panel-header__copy">
           <h1>Scene Inspector</h1>
-          <p>Compose your device shot</p>
+          <p>Light, finish, and frame your shot</p>
         </div>
         <div class="panel-status">Live</div>
       </header>

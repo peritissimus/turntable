@@ -132,9 +132,9 @@ section("Model");
   const wrap = el("div", "selectwrap");
   const sel = document.createElement("select");
   [
-    ["phone", "Phone"],
-    ["tablet", "Tablet"],
-    ["laptop", "Laptop"],
+    ["phone", "iPhone Pro"],
+    ["tablet", "iPad Pro 13\u2033"],
+    ["laptop", "MacBook Pro 14\u2033"],
     ["card", "Browser Frame"],
   ].forEach(([v, label]) => {
     const o = document.createElement("option");
@@ -146,6 +146,10 @@ section("Model");
   wrap.appendChild(sel);
   append(wrap);
 }
+
+// ---------- FINISH ----------
+section("Finish");
+chipGroup(Object.keys(scene.FINISHES), "Natural titanium", scene.setFinish);
 
 // ---------- LIGHTING ----------
 section("Lighting");
@@ -175,8 +179,14 @@ scene.onRotationInput((rot, fromUser) => {
 
 // ---------- BACKGROUND TYPE ----------
 section("Background type");
-chipGroup(["Flat", "Stage", "Mirror", "Transparent"], "Flat", (name) => {
-  scene.setBackgroundType(name.toLowerCase());
+const backgroundTypes = {
+  Wall: "flat",
+  Cyclorama: "stage",
+  Mirror: "mirror",
+  Transparent: "transparent",
+};
+chipGroup(Object.keys(backgroundTypes), "Wall", (name) => {
+  scene.setBackgroundType(backgroundTypes[name]);
 });
 
 // ---------- BACKGROUND ----------
@@ -185,12 +195,13 @@ section("Background");
   const tabs = el("div", "tabs");
   const grid = el("div", "thumbs");
   const TABS = [
+    ["studios", "Studios"],
     ["presets", "Presets"],
     ["wallpapers", "Wallpapers"],
     ["colors", "Colors"],
   ];
-  let activeTab = "wallpapers";
-  const selected = { presets: -1, wallpapers: 0, colors: -1 };
+  let activeTab = "studios";
+  const selected = { studios: 0, presets: -1, wallpapers: -1, colors: -1 };
 
   function renderGrid() {
     grid.textContent = "";
