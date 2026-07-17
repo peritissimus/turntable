@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const PANEL_W = 300;
+const PANEL_W = 376;
 let exportAspect = null; // width/height crop, null = full canvas
 
 // ---------- renderer / scene ----------
@@ -43,17 +43,20 @@ const hemi = new THREE.HemisphereLight(0xcdd3ff, 0x2b2620, 0.9);
 scene.add(hemi);
 
 const key = new THREE.DirectionalLight(0xffffff, 2.2);
-key.position.set(5, 6.5, 6.5);
+key.position.set(3.2, 5.8, 8.5);
+key.target.position.set(0, 1.85, 0);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.left = -9;
-key.shadow.camera.right = 9;
-key.shadow.camera.top = 9;
-key.shadow.camera.bottom = -5;
+key.shadow.camera.left = -6;
+key.shadow.camera.right = 6;
+key.shadow.camera.top = 7;
+key.shadow.camera.bottom = -4;
 key.shadow.camera.far = 40;
-key.shadow.blurSamples = 16;
-key.shadow.bias = -0.0004;
+key.shadow.blurSamples = 24;
+key.shadow.bias = -0.00015;
+key.shadow.normalBias = 0.012;
 scene.add(key);
+scene.add(key.target);
 
 const rim = new THREE.DirectionalLight(0xd9a441, 0.8);
 rim.position.set(-5, 3, -4);
@@ -61,19 +64,19 @@ scene.add(rim);
 
 const LIGHTING = {
   studio: {
-    key: { intensity: 2.2, color: 0xffffff, pos: [4, 5.5, 7.5] },
+    key: { intensity: 2.2, color: 0xffffff, pos: [3.2, 5.8, 8.5] },
     hemi: 0.9,
     rim: { intensity: 0.8, color: 0xd9a441, pos: [-5, 3, -4] },
     env: 0.45,
   },
   bright: {
-    key: { intensity: 3.4, color: 0xffffff, pos: [3, 7, 9] },
+    key: { intensity: 3.4, color: 0xffffff, pos: [2.4, 7.5, 10] },
     hemi: 1.7,
     rim: { intensity: 1.3, color: 0xffffff, pos: [-6, 4, -2] },
     env: 0.85,
   },
   noir: {
-    key: { intensity: 1.7, color: 0xc9d4f2, pos: [-6, 5, 4] },
+    key: { intensity: 1.7, color: 0xc9d4f2, pos: [-4.5, 4.5, 7] },
     hemi: 0.18,
     rim: { intensity: 1.8, color: 0x8fa8ff, pos: [6, 2, -3] },
     env: 0.12,
@@ -103,14 +106,77 @@ wall.position.set(0, 10, -1.0);
 wall.receiveShadow = true;
 scene.add(wall);
 
+// VSM gives us the real silhouette, while this low-contrast contact layer
+// restores the near-field density that soft shadow maps tend to wash out.
+// It is deliberately neutral black so colorful backgrounds do not tint it.
+function softShadowTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 512;
+  const g = c.getContext("2d");
+
+  function roundedBox(x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.lineTo(x + w - r, y);
+    g.quadraticCurveTo(x + w, y, x + w, y + r);
+    g.lineTo(x + w, y + h - r);
+    g.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    g.lineTo(x + r, y + h);
+    g.quadraticCurveTo(x, y + h, x, y + h - r);
+    g.lineTo(x, y + r);
+    g.quadraticCurveTo(x, y, x + r, y);
+    g.closePath();
+    g.fill();
+  }
+
+  g.fillStyle = "rgba(0,0,0,0.20)";
+  g.filter = "blur(46px)";
+  roundedBox(124, 74, 264, 364, 76);
+  g.fillStyle = "rgba(0,0,0,0.26)";
+  g.filter = "blur(22px)";
+  roundedBox(143, 86, 226, 340, 64);
+  g.fillStyle = "rgba(0,0,0,0.08)";
+  g.filter = "blur(8px)";
+  roundedBox(155, 98, 202, 316, 56);
+  g.filter = "none";
+
+  const t = new THREE.CanvasTexture(c);
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  return t;
+}
+
+const contactShadowMat = new THREE.MeshBasicMaterial({
+  map: softShadowTexture(),
+  transparent: true,
+  opacity: 0.2,
+  depthWrite: false,
+  toneMapped: false,
+});
+const contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), contactShadowMat);
+contactShadow.renderOrder = 1;
+scene.add(contactShadow);
+
+let currentWallGap = 1;
+let backgroundType = "flat";
+let shadowsEnabled = true;
+
+function syncShadowVisibility() {
+  contactShadow.visible = shadowsEnabled && backgroundType !== "transparent";
+}
+
 // the device ↔ wall gap drives the whole shadow character, like a real
 // studio wall: the lateral offset comes free from light projection, the
 // penumbra widens with the gap, and the shadow fades as the device
 // moves away from the surface
 export function setWallGap(g) {
+  currentWallGap = g;
   wall.position.z = -g;
-  key.shadow.radius = 2 + g * 7;
-  key.shadow.intensity = Math.max(0.3, 1.05 - g * 0.16);
+  contactShadow.position.z = -g + 0.012;
+  key.shadow.radius = 2.4 + g * 3;
+  key.shadow.intensity = Math.max(0.56, 0.94 - g * 0.09);
+  const proximity = THREE.MathUtils.clamp((4.25 - g) / 3.95, 0, 1);
+  contactShadowMat.opacity = 0.15 * proximity;
 }
 setWallGap(1);
 
@@ -338,6 +404,7 @@ export function setBackground(tab, index) {
 }
 
 export function setBackgroundType(type) {
+  backgroundType = type;
   wall.visible = type !== "transparent";
   floor.visible = type === "stage" || type === "mirror";
   if (type === "mirror") {
@@ -357,6 +424,7 @@ export function setBackgroundType(type) {
   }
   floorMat.needsUpdate = true;
   mirrorRoot.visible = type === "mirror";
+  syncShadowVisibility();
 }
 
 // ---------- materials ----------
@@ -706,7 +774,9 @@ export function setLightMult(v) {
 }
 
 export function setShadows(on) {
+  shadowsEnabled = on;
   key.castShadow = on;
+  syncShadowVisibility();
 }
 
 export function setFloat(on) {
@@ -816,6 +886,12 @@ export function exportPNG() {
 // ---------- loop ----------
 const D2R = Math.PI / 180;
 const clock = new THREE.Clock();
+const SHADOW_PROFILES = {
+  phone: { size: [2.9, 4.5], centerY: 1.85 },
+  tablet: { size: [4.8, 4.7], centerY: 1.85 },
+  laptop: { size: [8.1, 4.1], centerY: 2.1 },
+  card: { size: [7.5, 3.7], centerY: 1.85 },
+};
 
 function tick() {
   requestAnimationFrame(tick);
@@ -836,6 +912,14 @@ function tick() {
   const floatZ = state.float ? Math.sin(t * 0.6) * 0.012 : 0;
   g.position.y = d.baseY + floatY;
   g.rotation.set(baseRot.x * D2R, baseRot.y * D2R, baseRot.z * D2R + floatZ);
+
+  const shadowProfile = SHADOW_PROFILES[activeDevice];
+  key.target.position.y = shadowProfile.centerY;
+  const spread = 1 + currentWallGap * 0.075;
+  contactShadow.scale.set(shadowProfile.size[0] * spread, shadowProfile.size[1] * spread, 1);
+  contactShadow.position.x = -currentWallGap * 0.05;
+  contactShadow.position.y = shadowProfile.centerY + floatY - currentWallGap * 0.035;
+  contactShadow.rotation.z = baseRot.z * D2R * 0.12;
 
   if (mirrorRoot.visible) {
     const m = mirrors[activeDevice].group;

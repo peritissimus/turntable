@@ -1,6 +1,7 @@
 import * as scene from "./scene.js";
 
-const panel = document.getElementById("panel");
+const panel = document.getElementById("controls");
+let activeSection = panel;
 
 // ---------- tiny DOM helpers ----------
 function el(tag, cls, text) {
@@ -11,11 +12,23 @@ function el(tag, cls, text) {
 }
 
 function section(title) {
-  panel.appendChild(el("div", "sec-title", title));
+  const card = el("section", "control-section");
+  card.setAttribute("aria-labelledby", `section-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`);
+  const heading = el("h2", "sec-title", title);
+  heading.id = card.getAttribute("aria-labelledby");
+  card.appendChild(heading);
+  panel.appendChild(card);
+  activeSection = card;
+}
+
+function append(node) {
+  activeSection.appendChild(node);
+  return node;
 }
 
 function chipGroup(items, initial, onPick) {
   const wrap = el("div", "chips");
+  wrap.dataset.count = String(items.length);
   const btns = items.map((label) => {
     const b = el("button", "chip" + (label === initial ? " on" : ""), label);
     b.addEventListener("click", () => {
@@ -26,7 +39,7 @@ function chipGroup(items, initial, onPick) {
     wrap.appendChild(b);
     return b;
   });
-  panel.appendChild(wrap);
+  append(wrap);
   return {
     clear: () => btns.forEach((x) => x.classList.remove("on")),
   };
@@ -41,7 +54,7 @@ function scrubber({ label, min, max, value, step, fmt, onChange }) {
   const lbl = el("span", "lbl", label);
   const val = el("span", "val");
   s.append(fill, lbl, val);
-  panel.appendChild(s);
+  append(s);
 
   let v = value;
   const show = () => {
@@ -90,14 +103,14 @@ function toggleRow(label, checked, onChange) {
   const track = el("span", "track");
   sw.append(input, track);
   row.append(lab, sw);
-  panel.appendChild(row);
+  append(row);
   input.addEventListener("change", () => onChange(input.checked));
 }
 
 function button(label, cls, onClick) {
   const b = el("button", "btn" + (cls ? " " + cls : ""), label);
   b.addEventListener("click", onClick);
-  panel.appendChild(b);
+  append(b);
   return b;
 }
 
@@ -131,7 +144,7 @@ section("Model");
   });
   sel.addEventListener("change", () => scene.setDevice(sel.value));
   wrap.appendChild(sel);
-  panel.appendChild(wrap);
+  append(wrap);
 }
 
 // ---------- LIGHTING ----------
@@ -208,7 +221,7 @@ section("Background");
     tabs.appendChild(b);
   });
 
-  panel.append(tabs, grid);
+  activeSection.append(tabs, grid);
   renderGrid();
 }
 
@@ -261,11 +274,11 @@ chipGroup(Object.keys(ASPECTS), "Auto", (label) => {
   scene.setExportAspect(guideAspect);
   updateGuide();
 });
-panel.appendChild(el("div")).style.height = "8px";
+append(el("div", "control-gap"));
 chipGroup(["1×", "2×", "3×"], "2×", (label) => {
   scene.setExportScale(parseInt(label, 10));
 });
-panel.appendChild(el("div")).style.height = "10px";
+append(el("div", "control-gap compact"));
 button("Export PNG", null, scene.exportPNG);
 button("Reset Camera", "ghost", () => {
   const rot = scene.resetCamera();
