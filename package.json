@@ -4,14 +4,17 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "check": "astro check"
   },
   "dependencies": {
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "vite": "^6.0.0"
+    "@astrojs/check": "^0.9.9",
+    "astro": "^5.12.0",
+    "typescript": "^5.8.3"
   }
 }

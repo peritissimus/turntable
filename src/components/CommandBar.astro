@@ -1,0 +1,35 @@
+---
+import Brand from "./Brand.astro";
+import Icon from "./Icon.astro";
+---
+
+<header class="command-bar" aria-label="Project commands">
+  <Brand />
+
+  <div class="command-divider" aria-hidden="true"></div>
+  <div class="history-controls" aria-label="History">
+    <button class="icon-button" id="undoButton" type="button" aria-label="Undo" title="Undo (⌘Z)">
+      <Icon name="undo" />
+    </button>
+    <button class="icon-button" id="redoButton" type="button" aria-label="Redo" title="Redo (⇧⌘Z)">
+      <Icon name="redo" />
+    </button>
+  </div>
+
+  <div class="project-meta">
+    <input id="projectName" class="project-name" value="Untitled composition" aria-label="Project name" maxlength="60" />
+    <span id="saveStatus" class="save-status">Saved locally</span>
+  </div>
+
+  <nav class="command-actions" aria-label="Editor actions">
+    <button class="toolbar-button toolbar-button--quiet" id="presetsButton" type="button" aria-label="Presets">
+      <Icon name="sparkles" class="toolbar-button__icon" /><span class="toolbar-button__label">Presets</span>
+    </button>
+    <button class="toolbar-button toolbar-button--primary" id="exportButton" type="button" aria-label="Export">
+      <Icon name="export" class="toolbar-button__icon" /><span class="toolbar-button__label">Export</span>
+    </button>
+    <button class="icon-button inspector-toggle" id="inspectorToggle" type="button" aria-label="Toggle inspector" aria-controls="panel" aria-expanded="true">
+      <Icon name="sliders" />
+    </button>
+  </nav>
+</header>

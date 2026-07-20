@@ -1,0 +1,13 @@
+---
+import CommandBar from "./CommandBar.astro";
+import Inspector from "./Inspector.astro";
+import Stage from "./Stage.astro";
+---
+
+<main class="editor-shell">
+  <Stage />
+  <CommandBar />
+  <Inspector />
+  <div id="popoverLayer" class="popover-layer" aria-live="polite"></div>
+  <div id="toastRegion" class="toast-region" role="status" aria-live="polite" aria-atomic="true"></div>
+</main>

@@ -1,0 +1,16 @@
+---
+import Icon from "./Icon.astro";
+---
+
+<div id="stage" aria-label="Interactive 3D device preview"></div>
+
+<div class="stage-hint" aria-hidden="true">
+  <span>Drag to rotate</span><i></i><span>Scroll to zoom</span><i></i><span>Drop or paste an image</span>
+</div>
+
+<button class="mobile-editor-button" id="mobileEditorButton" type="button" aria-controls="panel" aria-expanded="false">
+  <Icon name="sliders" /><span>Edit scene</span>
+</button>
+
+<input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/avif" hidden />
+<div id="frameGuide" aria-hidden="true"></div>

@@ -1,0 +1,12 @@
+---
+import { SHELL_ICONS } from "../lib/shell-icons.js";
+
+interface Props {
+  name: keyof typeof SHELL_ICONS;
+  class?: string;
+}
+
+const { name, class: className } = Astro.props;
+---
+
+<span class:list={["icon", className]} aria-hidden="true" set:html={SHELL_ICONS[name]} />

@@ -1,0 +1,9 @@
+export const SHELL_ICONS = Object.freeze({
+  undo: '<svg viewBox="0 0 24 24" fill="none"><path d="M9 7 5 11l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 11h7.5a5 5 0 0 1 5 5v1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  redo: '<svg viewBox="0 0 24 24" fill="none"><path d="m15 7 4 4-4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 11h-7.5a5 5 0 0 0-5 5v1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  sliders: '<svg viewBox="0 0 24 24" fill="none"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  export: '<svg viewBox="0 0 24 24" fill="none"><path d="M12 15V4m0 0L8 8m4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  sparkles: '<svg viewBox="0 0 24 24" fill="none"><path d="m12 3 .8 2.2A5.3 5.3 0 0 0 16 8.3l2.2.8-2.2.8a5.3 5.3 0 0 0-3.2 3.2l-.8 2.2-.8-2.2A5.3 5.3 0 0 0 8 9.9l-2.2-.8L8 8.3a5.3 5.3 0 0 0 3.2-3.1L12 3ZM18.5 14.5l.4 1.1a2.7 2.7 0 0 0 1.5 1.5l1.1.4-1.1.4a2.7 2.7 0 0 0-1.5 1.5l-.4 1.1-.4-1.1a2.7 2.7 0 0 0-1.5-1.5l-1.1-.4 1.1-.4a2.7 2.7 0 0 0 1.5-1.5l.4-1.1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  device: '<svg viewBox="0 0 24 24" fill="none"><rect x="6" y="2.5" width="12" height="19" rx="3.5" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.5h4M11 18.5h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+});
