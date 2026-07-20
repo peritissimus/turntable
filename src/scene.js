@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
-const PANEL_W = 376;
+const PANEL_W = 408;
 const PREVIEW_PIXEL_RATIO = Math.min(devicePixelRatio, 1.5);
 const PREVIEW_SHADOW_SIZE = 1024;
 const EXPORT_SHADOW_SIZE = 2048;
@@ -239,7 +239,6 @@ scene.add(contactShadow);
 let currentWallGap = 1;
 let backgroundType = "flat";
 let shadowsEnabled = true;
-let contactBaseOpacity = 0.15;
 
 function syncShadowVisibility() {
   contactShadow.visible = shadowsEnabled && backgroundType !== "transparent";
@@ -257,8 +256,7 @@ export function setWallGap(g) {
   key.shadow.radius = 2.4 + g * 3;
   key.shadow.intensity = Math.max(0.56, 0.94 - g * 0.09);
   const proximity = THREE.MathUtils.clamp((4.25 - g) / 3.95, 0, 1);
-  contactBaseOpacity = 0.18 * proximity;
-  contactShadowMat.uniforms.uOpacity.value = contactBaseOpacity;
+  contactShadowMat.uniforms.uOpacity.value = 0.18 * proximity;
   contactShadowMat.uniforms.uSoftness.value = 0.22 + g * 0.12;
   markShadowDirty();
 }
@@ -665,10 +663,14 @@ function defaultScreen(g, w, h) {
   g.fill();
 }
 
+const defaultScreenTexture = drawToTexture(defaultScreen, 1000, 2000);
 let current = {
-  tex: drawToTexture(defaultScreen, 1000, 2000),
+  tex: defaultScreenTexture,
   aspect: 0.5,
 };
+let sourceTransform = { scale: 1, x: 0, y: 0 };
+let sourcePreviewUrl = defaultScreenTexture.image.toDataURL("image/png");
+let sourceHook = null;
 const screenMat = new THREE.MeshBasicMaterial({ map: current.tex, toneMapped: false });
 const mirrorScreenMat = new THREE.MeshBasicMaterial({
   map: current.tex,
@@ -724,16 +726,45 @@ function fitCover() {
   const t = current.tex;
   const imgA = current.aspect;
   const scrA = devices[activeDevice].aspect;
+  const scale = THREE.MathUtils.clamp(sourceTransform.scale, 1, 3);
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  let repeatX;
+  let repeatY;
   if (imgA > scrA) {
-    t.repeat.set(scrA / imgA, 1);
-    t.offset.set((1 - scrA / imgA) / 2, 0);
+    repeatX = scrA / imgA;
+    repeatY = 1;
   } else {
-    t.repeat.set(1, imgA / scrA);
-    t.offset.set(0, (1 - imgA / scrA) / 2);
+    repeatX = 1;
+    repeatY = imgA / scrA;
   }
+  repeatX /= scale;
+  repeatY /= scale;
+  const roomX = 1 - repeatX;
+  const roomY = 1 - repeatY;
+  t.repeat.set(repeatX, repeatY);
+  t.offset.set(
+    roomX * (0.5 + THREE.MathUtils.clamp(sourceTransform.x, -1, 1) * 0.5),
+    roomY * (0.5 + THREE.MathUtils.clamp(sourceTransform.y, -1, 1) * 0.5),
+  );
   t.needsUpdate = true;
   markRenderDirty();
+}
+
+export function setSourceTransform(transform) {
+  sourceTransform = {
+    scale: transform.scale ?? sourceTransform.scale,
+    x: transform.x ?? sourceTransform.x,
+    y: transform.y ?? sourceTransform.y,
+  };
+  fitCover();
+}
+
+export function onSourceChange(fn) {
+  sourceHook = fn;
+}
+
+export function getSourcePreview() {
+  return sourcePreviewUrl;
 }
 
 // ---------- devices ----------
@@ -788,7 +819,7 @@ function buildPhone(mats) {
   const bezel = roundedPart(1.39, 2.96, 0.024, 0.225, mats.dark);
   bezel.position.z = 0.07;
   g.add(bezel);
-  addFrontGlass(g, 1.345, 2.885, 0.195, mats, 0.095);
+  addFrontGlass(g, 1.365, 2.925, 0.205, mats, 0.095);
 
   const island = roundedPart(0.39, 0.112, 0.012, 0.055, mats.dark);
   island.position.set(0, 1.305, 0.104);
@@ -830,7 +861,7 @@ function buildPhone(mats) {
     }
   }
   g.position.y = 1.85;
-  return { group: g, aspect: 1.345 / 2.885 };
+  return { group: g, aspect: 1.365 / 2.925 };
 }
 
 function buildTablet(mats) {
@@ -839,7 +870,7 @@ function buildTablet(mats) {
   const bezel = roundedPart(2.47, 3.31, 0.018, 0.135, mats.dark);
   bezel.position.z = 0.052;
   g.add(bezel);
-  addFrontGlass(g, 2.34, 3.12, 0.075, mats, 0.071);
+  addFrontGlass(g, 2.41, 3.23, 0.095, mats, 0.071);
 
   const frontCamera = new THREE.Mesh(new THREE.CircleGeometry(0.025, 20), mats.lens);
   frontCamera.position.set(0, 1.605, 0.08);
@@ -858,7 +889,7 @@ function buildTablet(mats) {
   lidar.rotation.y = Math.PI;
   g.add(lidar);
   g.position.y = 1.85;
-  return { group: g, aspect: 2.34 / 3.12 };
+  return { group: g, aspect: 2.41 / 3.23 };
 }
 
 function buildLaptop(mats) {
@@ -867,10 +898,10 @@ function buildLaptop(mats) {
   const lidBody = shadowed(roundedPart(4.22, 2.72, 0.085, 0.13, mats.body));
   lidBody.position.y = 1.36;
   lid.add(lidBody);
-  const displayBezel = roundedPart(4.13, 2.63, 0.024, 0.095, mats.dark);
+  const displayBezel = roundedPart(4.15, 2.65, 0.024, 0.095, mats.dark);
   displayBezel.position.set(0, 1.36, 0.055);
   lid.add(displayBezel);
-  const scr = addFrontGlass(lid, 3.94, 2.43, 0.045, mats, 0.078);
+  const scr = addFrontGlass(lid, 4.08, 2.56, 0.06, mats, 0.078);
   scr.position.y = 1.32;
   if (mats.glare) lid.children[lid.children.length - 1].position.y = 1.32;
   const notch = roundedPart(0.46, 0.115, 0.012, 0.045, mats.dark);
@@ -932,23 +963,23 @@ function buildLaptop(mats) {
   g.add(hinge);
 
   g.position.set(0, 0.92, -0.22);
-  return { group: g, aspect: 3.94 / 2.43 };
+  return { group: g, aspect: 4.08 / 2.56 };
 }
 
 function buildCard(mats) {
   const g = new THREE.Group();
   g.add(shadowed(new THREE.Mesh(slabGeo(3.7, 2.45, 0.07, 0.12), mats.body)));
-  const scr = new THREE.Mesh(screenGeo(3.58, 2.33, 0.08), mats.screen);
+  const scr = new THREE.Mesh(screenGeo(3.62, 2.37, 0.085), mats.screen);
   scr.position.z = 0.055;
   g.add(scr);
   if (mats.glare) {
-    const gl = new THREE.Mesh(screenGeo(3.58, 2.33, 0.08), mats.glare);
+    const gl = new THREE.Mesh(screenGeo(3.62, 2.37, 0.085), mats.glare);
     gl.position.z = 0.059;
     g.add(gl);
     glareMeshes.push(gl);
   }
   g.position.y = 1.85;
-  return { group: g, aspect: 3.58 / 2.33 };
+  return { group: g, aspect: 3.62 / 2.37 };
 }
 
 const realMats = {
@@ -984,6 +1015,47 @@ const mirrorMats = {
 };
 const builders = { phone: buildPhone, tablet: buildTablet, laptop: buildLaptop, card: buildCard };
 
+const DEVICE_WALL_CLEARANCE = 0.08;
+const clearancePoint = new THREE.Vector3();
+
+function localBoundsCorners(group) {
+  group.updateWorldMatrix(true, true);
+  const bounds = new THREE.Box3().setFromObject(group);
+  bounds.min.sub(group.position);
+  bounds.max.sub(group.position);
+  const { min, max } = bounds;
+  return [
+    new THREE.Vector3(min.x, min.y, min.z),
+    new THREE.Vector3(min.x, min.y, max.z),
+    new THREE.Vector3(min.x, max.y, min.z),
+    new THREE.Vector3(min.x, max.y, max.z),
+    new THREE.Vector3(max.x, min.y, min.z),
+    new THREE.Vector3(max.x, min.y, max.z),
+    new THREE.Vector3(max.x, max.y, min.z),
+    new THREE.Vector3(max.x, max.y, max.z),
+  ];
+}
+
+function placeBackdropBehindDevice(device, group) {
+  group.position.z = device.baseZ;
+
+  let rotatedMinZ = Infinity;
+  for (const corner of device.boundsCorners) {
+    clearancePoint.copy(corner).applyEuler(group.rotation);
+    rotatedMinZ = Math.min(rotatedMinZ, clearancePoint.z);
+  }
+
+  const deepestDeviceZ = device.baseZ + rotatedMinZ;
+  const backdropZ = backgroundType === "transparent"
+    ? -currentWallGap
+    : Math.min(-currentWallGap, deepestDeviceZ - DEVICE_WALL_CLEARANCE);
+
+  wall.position.z = backdropZ;
+  cove.position.z = backdropZ;
+  contactShadow.position.z = backdropZ + 0.012;
+  return Math.abs(backdropZ);
+}
+
 const devices = {};
 const mirrors = {};
 const mirrorRoot = new THREE.Group();
@@ -994,6 +1066,8 @@ scene.add(mirrorRoot);
 for (const k of Object.keys(builders)) {
   devices[k] = builders[k](realMats);
   devices[k].baseY = devices[k].group.position.y;
+  devices[k].baseZ = devices[k].group.position.z;
+  devices[k].boundsCorners = localBoundsCorners(devices[k].group);
   scene.add(devices[k].group);
   const m = builders[k](mirrorMats);
   m.group.traverse((o) => { o.castShadow = false; });
@@ -1054,6 +1128,7 @@ stage.addEventListener("pointerdown", (e) => {
   py = e.clientY;
   stage.classList.add("dragging");
   stage.setPointerCapture(e.pointerId);
+  if (rotationHook) rotationHook({ ...baseRot }, true, "start");
 });
 stage.addEventListener("pointermove", (e) => {
   if (!dragging) return;
@@ -1061,17 +1136,19 @@ stage.addEventListener("pointermove", (e) => {
   baseRot.x = tRot.x = wrap180(baseRot.x + (e.clientY - py) * 0.35);
   px = e.clientX;
   py = e.clientY;
-  if (rotationHook) rotationHook({ ...baseRot }, true);
+  if (rotationHook) rotationHook({ ...baseRot }, true, "update");
 });
 stage.addEventListener("pointerup", () => {
   dragging = false;
   stage.classList.remove("dragging");
   markShadowDirty();
+  if (rotationHook) rotationHook({ ...baseRot }, true, "commit");
 });
 stage.addEventListener("pointercancel", () => {
   dragging = false;
   stage.classList.remove("dragging");
   markShadowDirty();
+  if (rotationHook) rotationHook({ ...baseRot }, true, "commit");
 });
 stage.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -1185,6 +1262,47 @@ export const defaults = {
   float: state.float,
 };
 
+let appliedEditorState = {};
+
+export function applyEditorState(editor) {
+  const previous = appliedEditorState;
+  const device = editor.device;
+  const environment = editor.environment;
+  const cameraState = editor.camera;
+  const source = editor.source;
+
+  if (previous.device?.type !== device.type) setDevice(device.type);
+  if (previous.device?.finish !== device.finish) setFinish(device.finish);
+  if (previous.device?.glare !== device.glare) setGlare(device.glare);
+
+  if (previous.environment?.lighting !== environment.lighting) setLighting(environment.lighting);
+  if (previous.environment?.intensity !== environment.intensity) setLightMult(environment.intensity);
+  if (previous.environment?.backgroundType !== environment.backgroundType) setBackgroundType(environment.backgroundType);
+  if (
+    previous.environment?.background?.tab !== environment.background.tab ||
+    previous.environment?.background?.index !== environment.background.index
+  ) setBackground(environment.background.tab, environment.background.index);
+  if (previous.environment?.shadows !== environment.shadows) setShadows(environment.shadows);
+  if (previous.environment?.float !== environment.float) setFloat(environment.float);
+  if (previous.environment?.spin !== environment.spin) setSpin(environment.spin);
+  if (previous.environment?.wallGap !== environment.wallGap) setWallGap(environment.wallGap);
+
+  if (previous.camera?.angle !== cameraState.angle && cameraState.angle) setAngle(cameraState.angle);
+  for (const axis of ["x", "y", "z"]) {
+    if (previous.camera?.rotation?.[axis] !== cameraState.rotation[axis]) {
+      setRotation(axis, cameraState.rotation[axis]);
+    }
+  }
+
+  if (
+    previous.source?.scale !== source.scale ||
+    previous.source?.x !== source.x ||
+    previous.source?.y !== source.y
+  ) setSourceTransform(source);
+
+  appliedEditorState = structuredClone(editor);
+}
+
 // ---------- image loading ----------
 const fileInput = document.getElementById("fileInput");
 
@@ -1192,28 +1310,99 @@ export function openUpload() {
   fileInput.click();
 }
 
-function loadImageFile(file) {
-  if (!file || !/^image\//.test(file.type)) return;
+export function loadImageFile(file, options = {}) {
+  if (!file || !/^image\//.test(file.type)) return Promise.resolve(null);
   const url = URL.createObjectURL(file);
-  const img = new Image();
-  img.onload = () => {
-    const t = new THREE.Texture(img);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    t.needsUpdate = true;
-    if (current.tex) current.tex.dispose();
-    current = { tex: t, aspect: img.naturalWidth / img.naturalHeight };
-    screenMat.map = t;
-    mirrorScreenMat.map = t;
-    screenMat.needsUpdate = true;
-    mirrorScreenMat.needsUpdate = true;
-    fitCover();
-    URL.revokeObjectURL(url);
-  };
-  img.src = url;
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const t = new THREE.Texture(img);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      t.needsUpdate = true;
+      if (current.tex && current.tex !== defaultScreenTexture) current.tex.dispose();
+      if (sourcePreviewUrl && sourcePreviewUrl.startsWith("blob:")) URL.revokeObjectURL(sourcePreviewUrl);
+      sourcePreviewUrl = url;
+      current = { tex: t, aspect: img.naturalWidth / img.naturalHeight };
+      screenMat.map = t;
+      mirrorScreenMat.map = t;
+      screenMat.needsUpdate = true;
+      mirrorScreenMat.needsUpdate = true;
+      fitCover();
+      const detail = {
+        file,
+        name: options.name || file.name || "Pasted image",
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        aspect: current.aspect,
+        previewUrl: sourcePreviewUrl,
+      };
+      if (options.notify !== false && sourceHook) sourceHook(detail);
+      resolve(detail);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("The selected image could not be decoded."));
+    };
+    img.src = url;
+  });
 }
 
-fileInput.addEventListener("change", () => loadImageFile(fileInput.files[0]));
+export async function loadImageUrl(value) {
+  let sourceUrl;
+  try {
+    sourceUrl = new URL(value);
+  } catch {
+    throw new Error("Enter a complete image URL, including https://");
+  }
+  if (!['http:', 'https:'].includes(sourceUrl.protocol)) {
+    throw new Error("Only http:// and https:// image URLs are supported.");
+  }
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 20000);
+  let response;
+  try {
+    response = await fetch(sourceUrl.href, { mode: "cors", signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("The image URL took too long to respond.");
+    throw new Error("That host blocked browser access. Download the image and use Replace instead.");
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  if (!response.ok) throw new Error(`The image URL returned ${response.status}.`);
+
+  const blob = await response.blob();
+  if (!/^image\//.test(blob.type)) throw new Error("That URL does not point to a supported image.");
+  const fallbackExtension = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+  const pathName = decodeURIComponent(sourceUrl.pathname.split("/").pop() || "");
+  const fileName = /\.[a-z0-9]{2,5}$/i.test(pathName) ? pathName : `remote-image.${fallbackExtension}`;
+  const file = new File([blob], fileName, { type: blob.type });
+  return loadImageFile(file, { name: fileName });
+}
+
+export function resetSource(options = {}) {
+  if (current.tex && current.tex !== defaultScreenTexture) current.tex.dispose();
+  if (sourcePreviewUrl && sourcePreviewUrl.startsWith("blob:")) URL.revokeObjectURL(sourcePreviewUrl);
+  sourcePreviewUrl = defaultScreenTexture.image.toDataURL("image/png");
+  current = { tex: defaultScreenTexture, aspect: 0.5 };
+  screenMat.map = defaultScreenTexture;
+  mirrorScreenMat.map = defaultScreenTexture;
+  screenMat.needsUpdate = true;
+  mirrorScreenMat.needsUpdate = true;
+  sourceTransform = { scale: 1, x: 0, y: 0 };
+  fitCover();
+  if (options.notify !== false && sourceHook) sourceHook(null);
+}
+
+fileInput.addEventListener("change", async () => {
+  try {
+    await loadImageFile(fileInput.files[0]);
+  } finally {
+    // Allow selecting the same file again after clearing or reframing it.
+    fileInput.value = "";
+  }
+});
 window.addEventListener("dragover", (e) => {
   e.preventDefault();
   stage.classList.add("dropping");
@@ -1255,36 +1444,70 @@ function setShadowQuality(size, blurSamples) {
   markShadowDirty();
 }
 
-export function exportPNG() {
-  const w = innerWidth, h = innerHeight;
-  camera.clearViewOffset();
-  camera.updateProjectionMatrix();
-  setShadowQuality(EXPORT_SHADOW_SIZE, 16);
-  renderer.setPixelRatio(1);
-  renderer.setSize(w * exportScale, h * exportScale, false);
-  renderer.render(scene, camera);
-  let url;
-  if (exportAspect) {
-    // crop the largest centered window matching the chosen aspect
-    const cw = renderer.domElement.width, ch = renderer.domElement.height;
-    let tw = cw, th = Math.round(cw / exportAspect);
-    if (th > ch) { th = ch; tw = Math.round(ch * exportAspect); }
-    const c = document.createElement("canvas");
-    c.width = tw;
-    c.height = th;
-    c.getContext("2d").drawImage(renderer.domElement, (cw - tw) / 2, (ch - th) / 2, tw, th, 0, 0, tw, th);
-    url = c.toDataURL("image/png");
-  } else {
-    url = renderer.domElement.toDataURL("image/png");
+export async function exportImage(options = {}) {
+  const format = ["png", "jpeg", "webp"].includes(options.format) ? options.format : "png";
+  const width = Math.max(320, Math.min(7680, Math.round(options.width || 2400)));
+  const height = Math.max(320, Math.min(7680, Math.round(options.height || 1600)));
+  const quality = THREE.MathUtils.clamp(options.quality ?? 0.92, 0.1, 1);
+  const transparent = Boolean(options.transparent && format !== "jpeg");
+  const viewportWidth = innerWidth;
+  const viewportHeight = innerHeight;
+  const visibleState = {
+    wall: wall.visible,
+    floor: floor.visible,
+    cove: cove.visible,
+    contactShadow: contactShadow.visible,
+    mirror: mirrorRoot.visible,
+  };
+
+  let blob;
+  try {
+    camera.clearViewOffset();
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    setShadowQuality(EXPORT_SHADOW_SIZE, 16);
+    renderer.setPixelRatio(1);
+    renderer.setSize(width, height, false);
+    if (transparent) {
+      wall.visible = false;
+      floor.visible = false;
+      cove.visible = false;
+      contactShadow.visible = false;
+      mirrorRoot.visible = false;
+      renderer.setClearColor(0x000000, 0);
+    }
+    renderer.render(scene, camera);
+    const mime = `image/${format}`;
+    blob = await new Promise((resolve, reject) => {
+      renderer.domElement.toBlob((value) => value ? resolve(value) : reject(new Error("Export failed.")), mime, quality);
+    });
+  } finally {
+    wall.visible = visibleState.wall;
+    floor.visible = visibleState.floor;
+    cove.visible = visibleState.cove;
+    contactShadow.visible = visibleState.contactShadow;
+    mirrorRoot.visible = visibleState.mirror;
+    setShadowQuality(PREVIEW_SHADOW_SIZE, 8);
+    renderer.setPixelRatio(PREVIEW_PIXEL_RATIO);
+    renderer.setSize(viewportWidth, viewportHeight, false);
+    layout();
   }
-  setShadowQuality(PREVIEW_SHADOW_SIZE, 8);
-  renderer.setPixelRatio(PREVIEW_PIXEL_RATIO);
-  renderer.setSize(w, h, false);
-  layout();
+  const extension = format === "jpeg" ? "jpg" : format;
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `turntable-${activeDevice}-${exportScale}x.png`;
+  a.download = `turntable-${activeDevice}-${width}x${height}.${extension}`;
   a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { width, height, format, bytes: blob.size };
+}
+
+export function exportPNG() {
+  return exportImage({
+    format: "png",
+    width: innerWidth * exportScale,
+    height: innerHeight * exportScale,
+  });
 }
 
 // ---------- loop ----------
@@ -1317,15 +1540,18 @@ function tick() {
   const floatZ = state.float ? Math.sin(t * 0.6) * 0.012 : 0;
   g.position.y = d.baseY + floatY;
   g.rotation.set(baseRot.x * D2R, baseRot.y * D2R, baseRot.z * D2R + floatZ);
+  const effectiveWallGap = placeBackdropBehindDevice(d, g);
 
   const shadowProfile = SHADOW_PROFILES[activeDevice];
   key.target.position.y = shadowProfile.centerY;
-  const spread = 1 + currentWallGap * 0.075;
+  const spread = 1 + effectiveWallGap * 0.075;
   contactShadow.scale.set(shadowProfile.size[0] * spread, shadowProfile.size[1] * spread, 1);
-  contactShadow.position.x = -currentWallGap * 0.05;
-  contactShadow.position.y = shadowProfile.centerY + floatY - currentWallGap * 0.035;
+  contactShadow.position.x = -effectiveWallGap * 0.05;
+  contactShadow.position.y = shadowProfile.centerY + floatY - effectiveWallGap * 0.035;
   contactShadow.rotation.z = baseRot.z * D2R * 0.12;
-  contactShadowMat.uniforms.uOpacity.value = contactBaseOpacity * shadowProfile.opacity;
+  const effectiveProximity = THREE.MathUtils.clamp((4.25 - effectiveWallGap) / 3.95, 0, 1);
+  contactShadowMat.uniforms.uOpacity.value = 0.18 * effectiveProximity * shadowProfile.opacity;
+  contactShadowMat.uniforms.uSoftness.value = 0.22 + effectiveWallGap * 0.12;
   contactShadowMat.uniforms.uSkew.value = Math.sin(baseRot.y * D2R) * 0.22;
 
   if (mirrorRoot.visible) {
