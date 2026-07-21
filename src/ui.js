@@ -24,6 +24,7 @@ const ICONS = {
   layers: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m5 12 7 4 7-4M5 16l7 4 7-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   upload: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15V5m0 0L8.5 8.5M12 5l3.5 3.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   link: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9.5 14.5 5-5M7.8 16.2l-1 1a3.5 3.5 0 1 1-5-5l3.4-3.4a3.5 3.5 0 0 1 5 0M16.2 7.8l1-1a3.5 3.5 0 1 1 5 5l-3.4 3.4a3.5 3.5 0 0 1-5 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6"/><path d="M3.8 12h16.4M12 3.5c2.1 2.3 3.2 5.1 3.2 8.5S14.1 18.2 12 20.5C9.9 18.2 8.8 15.4 8.8 12S9.9 5.8 12 3.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 7h14M9 4h6l1 3M8 10v7M12 10v7M16 10v7M7 7l1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   reset: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.3 7.2A8 8 0 1 1 4 12M6.3 7.2V3.5m0 3.7H10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 12.5 4 4 8-9" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -52,6 +53,7 @@ function stack(parent, title, detail = "") {
 
 function accordion({ id, title, icon, summary }) {
   const root = el("section", "accordion");
+  root.dataset.section = id;
   root.dataset.open = "false";
   const trigger = el("button", "accordion__trigger");
   trigger.type = "button";
@@ -72,7 +74,9 @@ function accordion({ id, title, icon, summary }) {
   clip.appendChild(body);
   collapsible.appendChild(clip);
   root.append(trigger, collapsible);
-  controls.appendChild(root);
+  // DialKit now owns scene parameters; the bespoke source card remains here
+  // because file and URL ingestion are outside DialKit's control vocabulary.
+  if (id === "source") controls.appendChild(root);
 
   trigger.addEventListener("click", () => {
     editorStore.set(`ui.openSections.${id}`, !editorStore.get().ui.openSections[id], { history: false, label: `${title} section` });
@@ -238,7 +242,11 @@ replaceSource.addEventListener("click", scene.openUpload);
 const urlSource = el("button", "source-action");
 urlSource.type = "button";
 urlSource.setAttribute("aria-expanded", "false");
-urlSource.innerHTML = `${ICONS.link}<span>From URL</span>`;
+urlSource.innerHTML = `${ICONS.link}<span>Image URL</span>`;
+const webpageSource = el("button", "source-action source-action--website");
+webpageSource.type = "button";
+webpageSource.setAttribute("aria-expanded", "false");
+webpageSource.innerHTML = `${ICONS.globe}<span>Capture website</span>`;
 const clearSource = el("button", "source-action source-action--icon");
 clearSource.type = "button";
 clearSource.title = "Clear source image";
@@ -251,58 +259,115 @@ clearSource.addEventListener("click", async () => {
   sourcePreview.style.backgroundImage = `url(${scene.getSourcePreview()})`;
   toast("Source image cleared");
 });
-sourceActions.append(replaceSource, urlSource, clearSource);
+sourceActions.append(replaceSource, urlSource, webpageSource, clearSource);
 sourceCopy.append(sourceName, sourceDimensions, sourceActions);
 sourceCard.append(sourcePreview, sourceCopy);
 sourceBody.appendChild(sourceCard);
 
 const sourceUrlForm = el("form", "source-url-form");
 sourceUrlForm.hidden = true;
+sourceUrlForm.dataset.mode = "image";
+const sourceUrlHeading = el("div", "source-url-form__heading");
+const sourceUrlTitle = el("strong", null, "Add image URL");
+const sourceUrlDescription = el("span", null, "Paste a direct link to an image file");
+sourceUrlHeading.append(sourceUrlTitle, sourceUrlDescription);
 const sourceUrlInput = el("input", "source-url-input");
-sourceUrlInput.type = "url";
+sourceUrlInput.type = "text";
 sourceUrlInput.inputMode = "url";
 sourceUrlInput.autocomplete = "url";
+sourceUrlInput.spellcheck = false;
 sourceUrlInput.placeholder = "https://example.com/image.png";
 sourceUrlInput.setAttribute("aria-label", "Image URL");
-const sourceUrlSubmit = el("button", "source-action source-action--primary", "Add image");
+const sourceUrlSubmit = el("button", "source-action source-action--primary");
 sourceUrlSubmit.type = "submit";
+sourceUrlSubmit.innerHTML = `${ICONS.link}<span>Add</span>`;
 const sourceUrlMessage = el("p", "source-url-message");
 sourceUrlMessage.setAttribute("role", "status");
-sourceUrlForm.append(sourceUrlInput, sourceUrlSubmit, sourceUrlMessage);
+sourceUrlForm.append(sourceUrlHeading, sourceUrlInput, sourceUrlSubmit, sourceUrlMessage);
 sourceBody.appendChild(sourceUrlForm);
 
-urlSource.addEventListener("click", () => {
-  sourceUrlForm.hidden = !sourceUrlForm.hidden;
-  urlSource.setAttribute("aria-expanded", String(!sourceUrlForm.hidden));
+let sourceUrlMode = "image";
+function setSourceUrlMode(mode) {
+  const shouldClose = !sourceUrlForm.hidden && sourceUrlMode === mode;
+  sourceUrlMode = mode;
+  sourceUrlForm.dataset.mode = mode;
+  sourceUrlForm.hidden = shouldClose;
+  urlSource.setAttribute("aria-expanded", String(!shouldClose && mode === "image"));
+  webpageSource.setAttribute("aria-expanded", String(!shouldClose && mode === "website"));
   sourceUrlMessage.textContent = "";
+  sourceUrlForm.removeAttribute("data-state");
+  sourceUrlInput.value = "";
+  if (mode === "website") {
+    sourceUrlTitle.textContent = "Capture a website";
+    sourceUrlDescription.textContent = "Public sites only · sized for the selected device";
+    sourceUrlInput.placeholder = "example.com";
+    sourceUrlInput.setAttribute("aria-label", "Website URL");
+    sourceUrlSubmit.innerHTML = `${ICONS.camera}<span>Capture</span>`;
+  } else {
+    sourceUrlTitle.textContent = "Add image URL";
+    sourceUrlDescription.textContent = "Paste a direct link to an image file";
+    sourceUrlInput.placeholder = "https://example.com/image.png";
+    sourceUrlInput.setAttribute("aria-label", "Image URL");
+    sourceUrlSubmit.innerHTML = `${ICONS.link}<span>Add</span>`;
+  }
   if (!sourceUrlForm.hidden) sourceUrlInput.focus();
+}
+
+urlSource.addEventListener("click", () => setSourceUrlMode("image"));
+webpageSource.addEventListener("click", () => setSourceUrlMode("website"));
+
+sourceUrlInput.addEventListener("input", () => {
+  sourceUrlMessage.textContent = "";
+  sourceUrlForm.removeAttribute("data-state");
 });
 
 sourceUrlForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const url = sourceUrlInput.value.trim();
   if (!url) {
-    sourceUrlMessage.textContent = "Paste a direct link to an image.";
+    sourceUrlMessage.textContent = sourceUrlMode === "website" ? "Enter a public website URL." : "Paste a direct link to an image.";
+    sourceUrlForm.dataset.state = "error";
     sourceUrlInput.focus();
     return;
   }
+  const submitContent = sourceUrlSubmit.innerHTML;
   sourceUrlSubmit.disabled = true;
-  sourceUrlSubmit.textContent = "Loading…";
-  sourceUrlMessage.textContent = "Fetching image…";
+  sourceUrlSubmit.setAttribute("aria-busy", "true");
+  sourceUrlSubmit.textContent = sourceUrlMode === "website" ? "Capturing…" : "Loading…";
+  sourceUrlMessage.textContent = sourceUrlMode === "website" ? "Rendering the webpage…" : "Fetching image…";
+  sourceUrlForm.dataset.state = "loading";
   try {
-    await scene.loadImageUrl(url);
+    if (sourceUrlMode === "website") {
+      await scene.loadWebpageUrl(url);
+    } else {
+      await scene.loadImageUrl(url);
+    }
     sourceUrlInput.value = "";
     sourceUrlMessage.textContent = "";
     sourceUrlForm.hidden = true;
     urlSource.setAttribute("aria-expanded", "false");
+    webpageSource.setAttribute("aria-expanded", "false");
   } catch (error) {
     sourceUrlMessage.textContent = error.message || "The image could not be loaded.";
+    sourceUrlForm.dataset.state = "error";
   } finally {
     sourceUrlSubmit.disabled = false;
-    sourceUrlSubmit.textContent = "Add image";
+    sourceUrlSubmit.removeAttribute("aria-busy");
+    sourceUrlSubmit.innerHTML = submitContent;
   }
 });
 
+syncers.push((state) => {
+  sourceName.textContent = state.source.name;
+  sourceDimensions.textContent = `${state.source.width} × ${state.source.height}px`;
+  clearSource.disabled = !state.source.hasCustomImage;
+});
+
+// Kept as a short-lived fallback while DialKit owns these controls. The false
+// branch is removed by the production build and avoids doing detached UI work.
+const legacySceneControlsEnabled = false;
+const rotationScrubbers = {};
+if (legacySceneControlsEnabled) {
 const sourceFraming = stack(sourceBody, "Framing", "Double-click a value to reset");
 scrubber(sourceFraming, {
   label: "Scale", min: 1, max: 3, step: 0.02, initial: 1,
@@ -319,12 +384,6 @@ scrubber(sourceFraming, {
   format: (v) => `${Math.round(v * 100)}%`, value: (state) => state.source.y,
   onInput: (v) => editorStore.set("source.y", v, { history: false }),
 });
-syncers.push((state) => {
-  sourceName.textContent = state.source.name;
-  sourceDimensions.textContent = `${state.source.width} × ${state.source.height}px`;
-  clearSource.disabled = !state.source.hasCustomImage;
-});
-
 // Camera
 const cameraBody = accordion({
   id: "camera",
@@ -344,7 +403,6 @@ chipGroup(angleStack, {
   },
 });
 const rotationStack = stack(cameraBody, "Rotation", "Degrees");
-const rotationScrubbers = {};
 for (const axis of ["x", "y", "z"]) {
   rotationScrubbers[axis] = scrubber(rotationStack, {
     label: axis.toUpperCase(), min: -180, max: 180, step: 1, initial: axis === "x" ? -4 : axis === "y" ? 24 : 0,
@@ -522,6 +580,7 @@ syncers.push((state) => {
     item.button.setAttribute("aria-pressed", String(item.tab === selected.tab && item.index === selected.index));
   }
 });
+}
 
 // Command bar and panel
 const undoButton = document.getElementById("undoButton");
@@ -788,7 +847,7 @@ window.addEventListener("keydown", (event) => {
 
 scene.onRotationInput((rotation, fromUser, phase) => {
   if (!fromUser) {
-    for (const axis of ["x", "y", "z"]) rotationScrubbers[axis].set(rotation[axis]);
+    for (const axis of ["x", "y", "z"]) rotationScrubbers[axis]?.set(rotation[axis]);
     return;
   }
   if (phase === "start") editorStore.beginGesture();
@@ -814,7 +873,7 @@ scene.onSourceChange(async (detail) => {
   }, { history: false, label: "Replace source image" });
   sourcePreview.style.backgroundImage = `url(${detail.previewUrl})`;
   await saveSource(detail.file);
-  toast("Source image updated");
+  toast(detail.kind === "website" ? "Website preview ready" : "Source image updated");
 });
 
 if (matchMedia("(max-width: 760px)").matches && editorStore.get().ui.panelOpen) {
