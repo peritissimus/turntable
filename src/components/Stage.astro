@@ -4,6 +4,24 @@ import Icon from "./Icon.astro";
 
 <div id="stage" aria-label="Interactive 3D device preview"></div>
 
+<div class="device-loader" id="deviceLoader" role="status" aria-live="polite" aria-atomic="true">
+  <div class="device-loader__card">
+    <div class="device-loader__visual" aria-hidden="true">
+      <div class="device-loader__shadow"></div>
+      <div class="device-loader__frame">
+        <span class="device-loader__speaker"></span>
+        <span class="device-loader__scan"></span>
+        <span class="device-loader__grid"></span>
+      </div>
+    </div>
+    <div class="device-loader__copy">
+      <strong id="deviceLoaderTitle">Preparing iPhone</strong>
+      <span id="deviceLoaderDetail">Loading detailed 3D model</span>
+    </div>
+    <div class="device-loader__progress" aria-hidden="true"><i></i><i></i><i></i></div>
+  </div>
+</div>
+
 <div class="stage-hint" aria-hidden="true">
   <span>Drag to rotate</span><i></i><span>Scroll to zoom</span><i></i><span>Drop or paste an image</span>
 </div>

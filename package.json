@@ -10,6 +10,10 @@
     "check": "astro check"
   },
   "dependencies": {
+    "dialkit": "^1.4.2",
+    "motion": "^12.42.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "three": "^0.185.1"
   },
   "devDependencies": {

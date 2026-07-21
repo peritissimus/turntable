@@ -5,14 +5,17 @@ import Icon from "./Icon.astro";
 <aside id="panel" class="inspector" aria-label="Scene inspector">
   <header class="inspector__header">
     <div>
-      <p class="eyebrow">Composition</p>
-      <h1>Scene inspector</h1>
+      <p class="eyebrow">Scene setup</p>
+      <h1>Compose your mockup</h1>
     </div>
     <button class="icon-button inspector__close" id="inspectorClose" type="button" aria-label="Close inspector">
       <Icon name="close" />
     </button>
   </header>
-  <div id="controls" class="inspector__content"></div>
+  <div class="inspector__content">
+    <div id="controls"></div>
+    <div id="dialkitMount" aria-label="Scene controls"></div>
+  </div>
   <footer class="inspector__footer">
     <span><kbd>⌘</kbd><kbd>Z</kbd> undo</span>
     <span><kbd>⇧</kbd><kbd>⌘</kbd><kbd>Z</kbd> redo</span>

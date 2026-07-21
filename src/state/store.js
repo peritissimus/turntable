@@ -34,6 +34,14 @@ export const DEFAULT_STATE = Object.freeze({
     float: false,
     spin: false,
     wallGap: 1,
+    keyLight: {
+      x: 0,
+      y: 0,
+      z: 0,
+      strength: 1,
+      softness: 1,
+      shadowDensity: 1,
+    },
   },
   export: {
     format: "png",
@@ -202,4 +210,3 @@ export const editorStore = {
     emit("reset", "Reset project");
   },
 };
-
