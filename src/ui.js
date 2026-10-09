@@ -336,26 +336,32 @@ const BACKGROUND_TABS = [
 let activeBackgroundTab = editorStore.get().environment.background.tab;
 let renderedBackgroundSelection = `${editorStore.get().environment.background.tab}:${editorStore.get().environment.background.index}`;
 let backgroundThumbButtons = [];
+const backgroundTabButtons = BACKGROUND_TABS.map(([id, label]) => {
+  const button = el("button", "tab", label);
+  button.type = "button";
+  button.setAttribute("aria-pressed", String(id === activeBackgroundTab));
+  button.addEventListener("click", () => {
+    if (activeBackgroundTab === id) return;
+    activeBackgroundTab = id;
+    renderBackgroundLibrary();
+  });
+  tabs.appendChild(button);
+  return { button, id };
+});
+
 function renderBackgroundLibrary() {
-  tabs.textContent = "";
+  const hadThumbnailFocus = thumbs.contains(document.activeElement);
+  const selected = editorStore.get().environment.background;
   thumbs.textContent = "";
   backgroundThumbButtons = [];
-  for (const [id, label] of BACKGROUND_TABS) {
-    const button = el("button", "tab", label);
-    button.type = "button";
+  for (const { button, id } of backgroundTabButtons) {
     button.setAttribute("aria-pressed", String(id === activeBackgroundTab));
-    button.addEventListener("click", () => {
-      activeBackgroundTab = id;
-      renderBackgroundLibrary();
-    });
-    tabs.appendChild(button);
   }
   scene.backgroundNames[activeBackgroundTab].forEach((name, index) => {
     const button = el("button", "thumb");
     button.type = "button";
     button.title = name;
     button.setAttribute("aria-label", `Background: ${name}`);
-    const selected = editorStore.get().environment.background;
     button.setAttribute("aria-pressed", String(selected.tab === activeBackgroundTab && selected.index === index));
     button.style.backgroundImage = `url(${scene.thumbFor(activeBackgroundTab, index)})`;
     button.addEventListener("click", () => {
@@ -364,6 +370,10 @@ function renderBackgroundLibrary() {
     thumbs.appendChild(button);
     backgroundThumbButtons.push({ button, tab: activeBackgroundTab, index });
   });
+  if (hadThumbnailFocus) {
+    const selectedButton = backgroundThumbButtons.find((item) => item.tab === selected.tab && item.index === selected.index);
+    (selectedButton || backgroundThumbButtons[0])?.button.focus({ preventScroll: true });
+  }
 }
 libraryStack.append(tabs, thumbs);
 renderBackgroundLibrary();
@@ -372,9 +382,11 @@ syncers.push((state) => {
   const selectionKey = `${selected.tab}:${selected.index}`;
   if (selectionKey !== renderedBackgroundSelection) {
     renderedBackgroundSelection = selectionKey;
-    activeBackgroundTab = selected.tab;
-    renderBackgroundLibrary();
-    return;
+    if (activeBackgroundTab !== selected.tab) {
+      activeBackgroundTab = selected.tab;
+      renderBackgroundLibrary();
+      return;
+    }
   }
   for (const item of backgroundThumbButtons) {
     item.button.setAttribute("aria-pressed", String(item.tab === selected.tab && item.index === selected.index));

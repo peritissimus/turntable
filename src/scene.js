@@ -6,6 +6,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 // Keep in sync with --panel-reserve: panel width + the two 16px gutters.
 const PANEL_W = 408;
 const PANEL_TRANSITION_MS = 260;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const PREVIEW_PIXEL_RATIO = Math.min(devicePixelRatio, 1.5);
 const PREVIEW_SHADOW_SIZE = 2048;
 const EXPORT_SHADOW_SIZE = 4096;
@@ -104,7 +105,7 @@ function setPanelReserveTarget(value) {
 
 function updatePanelReserve(now) {
   if (panelReserve === panelReserveTarget) return false;
-  const progress = Math.min(1, (now - panelReserveStartedAt) / PANEL_TRANSITION_MS);
+  const progress = reducedMotion.matches ? 1 : Math.min(1, (now - panelReserveStartedAt) / PANEL_TRANSITION_MS);
   const eased = 1 - Math.pow(1 - progress, 3);
   panelReserve = THREE.MathUtils.lerp(panelReserveFrom, panelReserveTarget, eased);
   if (progress === 1) panelReserve = panelReserveTarget;
