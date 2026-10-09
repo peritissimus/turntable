@@ -18,7 +18,7 @@ import Icon from "./Icon.astro";
 
   <div class="project-meta">
     <input id="projectName" class="project-name" value="Untitled composition" aria-label="Project name" maxlength="60" />
-    <span id="saveStatus" class="save-status">Saved locally</span>
+    <span id="saveStatus" class="save-status" role="status" aria-live="polite" aria-atomic="true">Saved locally</span>
   </div>
 
   <nav class="command-actions" aria-label="Editor actions">

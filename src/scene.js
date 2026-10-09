@@ -3,7 +3,10 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
+// Keep in sync with --panel-reserve: panel width + the two 16px gutters.
 const PANEL_W = 408;
+const PANEL_TRANSITION_MS = 260;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const PREVIEW_PIXEL_RATIO = Math.min(devicePixelRatio, 1.5);
 const PREVIEW_SHADOW_SIZE = 2048;
 const EXPORT_SHADOW_SIZE = 4096;
@@ -65,6 +68,11 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 120);
 let forceShadowRefresh = true;
 let renderDirty = true;
+let inspectorOpen = true;
+let panelReserve = innerWidth > 900 ? PANEL_W : 0;
+let panelReserveFrom = panelReserve;
+let panelReserveTarget = panelReserve;
+let panelReserveStartedAt = performance.now();
 
 function markRenderDirty() {
   renderDirty = true;
@@ -81,15 +89,36 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 pmrem.dispose();
 
+function applyViewOffset() {
+  const w = innerWidth, h = innerHeight;
+  if (!exportAspect && panelReserve > 0.5) camera.setViewOffset(w, h, panelReserve / 2, 0, w, h);
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+}
+
+function setPanelReserveTarget(value) {
+  if (value === panelReserveTarget) return;
+  panelReserveFrom = panelReserve;
+  panelReserveTarget = value;
+  panelReserveStartedAt = performance.now();
+}
+
+function updatePanelReserve(now) {
+  if (panelReserve === panelReserveTarget) return false;
+  const progress = reducedMotion.matches ? 1 : Math.min(1, (now - panelReserveStartedAt) / PANEL_TRANSITION_MS);
+  const eased = 1 - Math.pow(1 - progress, 3);
+  panelReserve = THREE.MathUtils.lerp(panelReserveFrom, panelReserveTarget, eased);
+  if (progress === 1) panelReserve = panelReserveTarget;
+  applyViewOffset();
+  return true;
+}
+
 function layout() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h);
   camera.aspect = w / h;
-  // keep the device centered in the area left of the panel — except
-  // when a crop guide is up, where preview must match the export frame
-  if (w > 760 && !exportAspect) camera.setViewOffset(w, h, PANEL_W / 2, 0, w, h);
-  else camera.clearViewOffset();
-  camera.updateProjectionMatrix();
+  setPanelReserveTarget(w > 900 && inspectorOpen ? PANEL_W : 0);
+  applyViewOffset();
   markRenderDirty();
 }
 layout();
@@ -196,8 +225,8 @@ applyLighting();
 
 // ---------- wall + floor ----------
 const studioUniforms = {
-  grain: { value: 0.018 },
-  vignette: { value: 0.15 },
+  grain: { value: 0.008 },
+  vignette: { value: 0.08 },
 };
 
 const wallMat = new THREE.MeshStandardMaterial({ roughness: 0.96, metalness: 0 });
@@ -569,8 +598,8 @@ export function setBackground(tab, index) {
   const request = ++bgRequest;
 
   if (tab === "studios") {
-    studioUniforms.grain.value = 0.009;
-    studioUniforms.vignette.value = 0.08;
+    studioUniforms.grain.value = 0.004;
+    studioUniforms.vignette.value = 0.05;
     floorMat.color.set(item.floor);
     syncCoveColor();
     if (wallTexCache[k]) {
@@ -584,8 +613,8 @@ export function setBackground(tab, index) {
     return;
   }
 
-  studioUniforms.grain.value = 0.018;
-  studioUniforms.vignette.value = 0.15;
+  studioUniforms.grain.value = 0.008;
+  studioUniforms.vignette.value = 0.08;
   if (!wallTexCache[k]) {
     const art = tab === "colors"
       ? (g, w, h) => { g.fillStyle = item.hex; g.fillRect(0, 0, w, h); }
@@ -1396,7 +1425,7 @@ stage.addEventListener("wheel", (e) => {
 // the active device's own framing radius
 export const ANGLES = {
   Front: { rot: [0, 12, 0], zoom: 9 },
-  Hero: { rot: [-4, 24, 0], zoom: 8.5 },
+  Hero: { rot: [-4, 24, 0], zoom: 7.6 },
   Flat: { rot: [0, 0, 0], zoom: 9.5 },
   "Low angle": { rot: [14, 0, 0], zoom: 8.5 },
   Isometric: { rot: [-16, 38, 0], zoom: 11 },
@@ -1518,6 +1547,11 @@ export function applyEditorState(editor) {
   const environment = editor.environment;
   const cameraState = editor.camera;
   const source = editor.source;
+
+  if (previous.ui?.panelOpen !== editor.ui.panelOpen) {
+    inspectorOpen = editor.ui.panelOpen;
+    layout();
+  }
 
   if (previous.device?.type !== device.type) setDevice(device.type);
   if (previous.device?.finish !== device.finish) setFinish(device.finish);
@@ -1846,7 +1880,9 @@ const SHADOW_TARGETS = {
 
 function tick() {
   requestAnimationFrame(tick);
-  const t = (performance.now() - startedAt) * 0.001;
+  const now = performance.now();
+  const t = (now - startedAt) * 0.001;
+  const panelOffsetAnimating = updatePanelReserve(now);
   if (state.spin && !dragging) {
     baseRot.y = tRot.y = wrap180(baseRot.y + 0.2);
     if (rotationHook) rotationHook({ ...baseRot }, false);
@@ -1877,7 +1913,7 @@ function tick() {
   }
   const rotationsSettling = Math.abs(tRot.x - baseRot.x) + Math.abs(tRot.y - baseRot.y) + Math.abs(tRot.z - baseRot.z) > 0.02;
   const cameraSettling = Math.abs(view.tRadius - view.radius) > 0.002;
-  const sceneAnimated = state.float || state.spin || dragging || rotationsSettling || cameraSettling;
+  const sceneAnimated = state.float || state.spin || dragging || rotationsSettling || cameraSettling || panelOffsetAnimating;
   if (!sceneAnimated && !renderDirty) return;
   const shadowIsMoving = state.float || state.spin || dragging || rotationsSettling;
   renderer.shadowMap.needsUpdate = shadowsEnabled && (forceShadowRefresh || (shadowIsMoving && shadowFrame % 2 === 0));

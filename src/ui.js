@@ -3,10 +3,14 @@ import { DEFAULT_STATE, editorStore } from "./state/store.js";
 import { clearStoredSource, restoreSource, saveSource } from "./state/source-storage.js";
 
 const controls = document.getElementById("controls");
+const libraryControls = document.getElementById("libraryControls");
 const inspectorPanel = document.getElementById("panel");
 const popoverLayer = document.getElementById("popoverLayer");
 const toastRegion = document.getElementById("toastRegion");
 const frameGuide = document.getElementById("frameGuide");
+const panelScrim = document.getElementById("panelScrim");
+const stageHint = document.querySelector(".stage-hint");
+document.getElementById("stageUploadButton").addEventListener("click", scene.openUpload);
 const syncers = [];
 
 const ICONS = {
@@ -74,9 +78,10 @@ function accordion({ id, title, icon, summary }) {
   clip.appendChild(body);
   collapsible.appendChild(clip);
   root.append(trigger, collapsible);
-  // DialKit now owns scene parameters; the bespoke source card remains here
-  // because file and URL ingestion are outside DialKit's control vocabulary.
-  if (id === "source") controls.appendChild(root);
+  // DialKit owns the numeric scene parameters. Source ingestion and the
+  // visual background library stay bespoke: one needs file/URL input, the
+  // other needs thumbnails rather than a dropdown of names.
+  (id === "background" ? libraryControls : controls).appendChild(root);
 
   trigger.addEventListener("click", () => {
     editorStore.set(`ui.openSections.${id}`, !editorStore.get().ui.openSections[id], { history: false, label: `${title} section` });
@@ -113,68 +118,6 @@ function chipGroup(parent, { items, value, onPick, columns = 3 }) {
   return sync;
 }
 
-function scrubber(parent, { label, min, max, step, initial, format, value, onInput, commitLabel }) {
-  const scrub = el("div", "scrub");
-  scrub.tabIndex = 0;
-  scrub.setAttribute("role", "slider");
-  scrub.setAttribute("aria-label", label);
-  scrub.setAttribute("aria-valuemin", String(min));
-  scrub.setAttribute("aria-valuemax", String(max));
-  const fill = el("div", "scrub__fill");
-  const labelNode = el("span", "scrub__label", label);
-  const valueNode = el("span", "scrub__value");
-  scrub.append(fill, labelNode, valueNode);
-  parent.appendChild(scrub);
-
-  let current = initial;
-  let dragging = false;
-  let startX = 0;
-  let startValue = current;
-  const setVisual = (next) => {
-    current = Number(next);
-    fill.style.width = `${((current - min) / (max - min)) * 100}%`;
-    valueNode.textContent = format ? format(current) : String(current);
-    scrub.setAttribute("aria-valuenow", String(current));
-  };
-  const update = (next) => {
-    const clamped = Math.min(max, Math.max(min, Math.round(next / step) * step));
-    onInput(+clamped.toFixed(4));
-  };
-  const finish = () => {
-    if (!dragging) return;
-    dragging = false;
-    editorStore.endGesture(commitLabel || `Adjust ${label}`);
-  };
-  scrub.addEventListener("pointerdown", (event) => {
-    dragging = true;
-    startX = event.clientX;
-    startValue = current;
-    editorStore.beginGesture();
-    scrub.setPointerCapture(event.pointerId);
-  });
-  scrub.addEventListener("pointermove", (event) => {
-    if (dragging) update(startValue + ((event.clientX - startX) / scrub.clientWidth) * (max - min));
-  });
-  scrub.addEventListener("pointerup", finish);
-  scrub.addEventListener("pointercancel", finish);
-  scrub.addEventListener("dblclick", () => {
-    editorStore.beginGesture();
-    update(initial);
-    editorStore.endGesture(`Reset ${label}`);
-  });
-  scrub.addEventListener("keydown", (event) => {
-    const direction = (event.key === "ArrowRight" || event.key === "ArrowUp") ? 1 : (event.key === "ArrowLeft" || event.key === "ArrowDown") ? -1 : 0;
-    if (!direction) return;
-    event.preventDefault();
-    editorStore.beginGesture();
-    update(current + step * direction);
-    editorStore.endGesture(commitLabel || `Adjust ${label}`);
-  });
-  const sync = (state) => setVisual(value(state));
-  syncers.push(sync);
-  return { set: setVisual, sync };
-}
-
 let toggleId = 0;
 function toggleRow(parent, { label, description, value, onChange, disabled = () => false }) {
   const row = el("div", "toggle-row");
@@ -198,22 +141,6 @@ function toggleRow(parent, { label, description, value, onChange, disabled = () 
   return input;
 }
 
-function selectControl(parent, { options, value, onChange }) {
-  const wrap = el("div", "select-wrap");
-  const select = document.createElement("select");
-  for (const option of options) {
-    const item = document.createElement("option");
-    item.value = option.value;
-    item.textContent = option.label;
-    select.appendChild(item);
-  }
-  select.addEventListener("change", () => onChange(select.value));
-  wrap.appendChild(select);
-  parent.appendChild(wrap);
-  syncers.push((state) => { select.value = value(state); });
-  return select;
-}
-
 function toast(message) {
   toastRegion.textContent = "";
   const node = el("div", "toast");
@@ -227,9 +154,10 @@ const sourceBody = accordion({
   id: "source",
   title: "Source image",
   icon: "image",
-  summary: (state) => state.source.name,
+  summary: (state) => (state.source.hasCustomImage ? state.source.name : "No image"),
 });
 const sourceCard = el("div", "source-card");
+const sourceSummary = el("div", "source-summary");
 const sourcePreview = el("div", "source-preview");
 const sourceCopy = el("div", "source-copy");
 const sourceName = el("strong");
@@ -237,7 +165,6 @@ const sourceDimensions = el("span");
 const sourceActions = el("div", "source-actions");
 const replaceSource = el("button", "source-action");
 replaceSource.type = "button";
-replaceSource.innerHTML = `${ICONS.upload}<span>Replace</span>`;
 replaceSource.addEventListener("click", scene.openUpload);
 const urlSource = el("button", "source-action");
 urlSource.type = "button";
@@ -260,8 +187,9 @@ clearSource.addEventListener("click", async () => {
   toast("Source image cleared");
 });
 sourceActions.append(replaceSource, urlSource, webpageSource, clearSource);
-sourceCopy.append(sourceName, sourceDimensions, sourceActions);
-sourceCard.append(sourcePreview, sourceCopy);
+sourceCopy.append(sourceName, sourceDimensions);
+sourceSummary.append(sourcePreview, sourceCopy);
+sourceCard.append(sourceSummary, sourceActions);
 sourceBody.appendChild(sourceCard);
 
 const sourceUrlForm = el("form", "source-url-form");
@@ -357,152 +285,24 @@ sourceUrlForm.addEventListener("submit", async (event) => {
   }
 });
 
+let sourceCtaMode = null;
 syncers.push((state) => {
-  sourceName.textContent = state.source.name;
-  sourceDimensions.textContent = `${state.source.width} × ${state.source.height}px`;
+  sourceName.textContent = state.source.hasCustomImage ? state.source.name : "No image yet";
+  sourceDimensions.textContent = state.source.hasCustomImage
+    ? `${state.source.width} × ${state.source.height}px`
+    : "Showing placeholder artwork";
   clearSource.disabled = !state.source.hasCustomImage;
+  const mode = state.source.hasCustomImage ? "replace" : "upload";
+  if (mode !== sourceCtaMode) {
+    sourceCtaMode = mode;
+    replaceSource.innerHTML = `${ICONS.upload}<span>${mode === "upload" ? "Upload image" : "Replace"}</span>`;
+    replaceSource.classList.toggle("source-action--primary", mode === "upload");
+  }
+  stageHint.hidden = state.source.hasCustomImage;
 });
 
-// Kept as a short-lived fallback while DialKit owns these controls. The false
-// branch is removed by the production build and avoids doing detached UI work.
-const legacySceneControlsEnabled = false;
-const rotationScrubbers = {};
-if (legacySceneControlsEnabled) {
-const sourceFraming = stack(sourceBody, "Framing", "Double-click a value to reset");
-scrubber(sourceFraming, {
-  label: "Scale", min: 1, max: 3, step: 0.02, initial: 1,
-  format: (v) => `${v.toFixed(2)}×`, value: (state) => state.source.scale,
-  onInput: (v) => editorStore.set("source.scale", v, { history: false }),
-});
-scrubber(sourceFraming, {
-  label: "Horizontal", min: -1, max: 1, step: 0.02, initial: 0,
-  format: (v) => `${Math.round(v * 100)}%`, value: (state) => state.source.x,
-  onInput: (v) => editorStore.set("source.x", v, { history: false }),
-});
-scrubber(sourceFraming, {
-  label: "Vertical", min: -1, max: 1, step: 0.02, initial: 0,
-  format: (v) => `${Math.round(v * 100)}%`, value: (state) => state.source.y,
-  onInput: (v) => editorStore.set("source.y", v, { history: false }),
-});
-// Camera
-const cameraBody = accordion({
-  id: "camera",
-  title: "Camera",
-  icon: "camera",
-  summary: (state) => state.camera.angle || "Custom angle",
-});
-const angleStack = stack(cameraBody, "Composition angles");
-chipGroup(angleStack, {
-  items: Object.keys(scene.ANGLES),
-  value: (state) => state.camera.angle,
-  onPick: (name) => {
-    const angle = scene.ANGLES[name];
-    editorStore.patch({
-      camera: { angle: name, rotation: { x: angle.rot[0], y: angle.rot[1], z: angle.rot[2] } },
-    }, { label: `Set ${name} angle` });
-  },
-});
-const rotationStack = stack(cameraBody, "Rotation", "Degrees");
-for (const axis of ["x", "y", "z"]) {
-  rotationScrubbers[axis] = scrubber(rotationStack, {
-    label: axis.toUpperCase(), min: -180, max: 180, step: 1, initial: axis === "x" ? -4 : axis === "y" ? 24 : 0,
-    format: (v) => `${Math.round(v)}°`, value: (state) => state.camera.rotation[axis],
-    onInput: (v) => editorStore.patch({
-      camera: { angle: null, rotation: { ...editorStore.get().camera.rotation, [axis]: v } },
-    }, { history: false }),
-    commitLabel: `Rotate ${axis.toUpperCase()}`,
-  });
-}
-const resetCamera = el("button", "plain-button section-action");
-resetCamera.type = "button";
-resetCamera.innerHTML = `${ICONS.reset}<span>Reset camera</span>`;
-resetCamera.addEventListener("click", () => {
-  const angle = scene.ANGLES.Hero;
-  editorStore.patch({ camera: { angle: "Hero", rotation: { x: angle.rot[0], y: angle.rot[1], z: angle.rot[2] } } }, { label: "Reset camera" });
-});
-cameraBody.appendChild(resetCamera);
-
-// Device
-const DEVICE_OPTIONS = [
-  { value: "phone", label: "iPhone Pro" },
-  { value: "tablet", label: "iPad Pro 13″" },
-  { value: "laptop", label: "MacBook Pro 14″" },
-  { value: "card", label: "Browser Frame" },
-];
-const deviceBody = accordion({
-  id: "device",
-  title: "Device",
-  icon: "device",
-  summary: (state) => DEVICE_OPTIONS.find((item) => item.value === state.device.type)?.label || state.device.type,
-});
-const modelStack = stack(deviceBody, "Model");
-selectControl(modelStack, {
-  options: DEVICE_OPTIONS,
-  value: (state) => state.device.type,
-  onChange: (value) => editorStore.set("device.type", value, { label: "Change device" }),
-});
-const finishStack = stack(deviceBody, "Finish");
-chipGroup(finishStack, {
-  items: Object.keys(scene.FINISHES),
-  value: (state) => state.device.finish,
-  onPick: (value) => editorStore.set("device.finish", value, { label: "Change finish" }),
-  columns: 2,
-});
-const deviceToggles = el("div", "control-stack");
-toggleRow(deviceToggles, {
-  label: "Glass glare", description: "Add a polished light sweep",
-  value: (state) => state.device.glare,
-  onChange: (value) => editorStore.set("device.glare", value, { label: "Toggle glass glare" }),
-});
-deviceBody.appendChild(deviceToggles);
-
-// Environment
-const environmentBody = accordion({
-  id: "environment",
-  title: "Light & environment",
-  icon: "sun",
-  summary: (state) => state.environment.lighting[0].toUpperCase() + state.environment.lighting.slice(1),
-});
-const lightingStack = stack(environmentBody, "Lighting mood");
-chipGroup(lightingStack, {
-  items: [
-    { value: "studio", label: "Studio" },
-    { value: "bright", label: "Bright" },
-    { value: "noir", label: "Noir" },
-  ],
-  value: (state) => state.environment.lighting,
-  onPick: (value) => editorStore.set("environment.lighting", value, { label: "Change lighting" }),
-});
-const environmentScrubs = stack(environmentBody, "Light placement");
-scrubber(environmentScrubs, {
-  label: "Intensity", min: 0.4, max: 2, step: 0.05, initial: 1,
-  format: (v) => v.toFixed(2), value: (state) => state.environment.intensity,
-  onInput: (v) => editorStore.set("environment.intensity", v, { history: false }),
-});
-scrubber(environmentScrubs, {
-  label: "Wall distance", min: 0.3, max: 4, step: 0.05, initial: 1,
-  format: (v) => v.toFixed(2), value: (state) => state.environment.wallGap,
-  onInput: (v) => editorStore.set("environment.wallGap", v, { history: false }),
-});
-const environmentToggles = el("div", "control-stack");
-toggleRow(environmentToggles, {
-  label: "Shadows", description: "Ground the device in the scene",
-  value: (state) => state.environment.shadows,
-  onChange: (value) => editorStore.set("environment.shadows", value, { label: "Toggle shadows" }),
-});
-toggleRow(environmentToggles, {
-  label: "Float", description: "Lift the device from the surface",
-  value: (state) => state.environment.float,
-  onChange: (value) => editorStore.set("environment.float", value, { label: "Toggle float" }),
-});
-toggleRow(environmentToggles, {
-  label: "Auto-rotate", description: "Preview the composition from every side",
-  value: (state) => state.environment.spin,
-  onChange: (value) => editorStore.set("environment.spin", value, { label: "Toggle auto-rotate" }),
-});
-environmentBody.appendChild(environmentToggles);
-
-// Background
+// Background library. Kept outside DialKit because choosing a backdrop is a
+// visual decision: thumbnails beat a dropdown of names.
 const BACKGROUND_TYPES = [
   { value: "flat", label: "Wall" },
   { value: "stage", label: "Cove" },
@@ -522,8 +322,10 @@ chipGroup(typeStack, {
   onPick: (value) => editorStore.set("environment.backgroundType", value, { label: "Change background surface" }),
   columns: 4,
 });
-const libraryStack = stack(backgroundBody, "Library");
+const libraryStack = stack(backgroundBody, "Backdrop");
 const tabs = el("div", "tabs");
+tabs.setAttribute("role", "group");
+tabs.setAttribute("aria-label", "Backdrop category");
 const thumbs = el("div", "thumbs");
 const BACKGROUND_TABS = [
   ["studios", "Studios"],
@@ -534,36 +336,44 @@ const BACKGROUND_TABS = [
 let activeBackgroundTab = editorStore.get().environment.background.tab;
 let renderedBackgroundSelection = `${editorStore.get().environment.background.tab}:${editorStore.get().environment.background.index}`;
 let backgroundThumbButtons = [];
+const backgroundTabButtons = BACKGROUND_TABS.map(([id, label]) => {
+  const button = el("button", "tab", label);
+  button.type = "button";
+  button.setAttribute("aria-pressed", String(id === activeBackgroundTab));
+  button.addEventListener("click", () => {
+    if (activeBackgroundTab === id) return;
+    activeBackgroundTab = id;
+    renderBackgroundLibrary();
+  });
+  tabs.appendChild(button);
+  return { button, id };
+});
+
 function renderBackgroundLibrary() {
-  tabs.textContent = "";
+  const hadThumbnailFocus = thumbs.contains(document.activeElement);
+  const selected = editorStore.get().environment.background;
   thumbs.textContent = "";
   backgroundThumbButtons = [];
-  for (const [id, label] of BACKGROUND_TABS) {
-    const button = el("button", "tab", label);
-    button.type = "button";
-    button.setAttribute("role", "tab");
-    button.setAttribute("aria-selected", String(id === activeBackgroundTab));
-    button.addEventListener("click", () => {
-      activeBackgroundTab = id;
-      renderBackgroundLibrary();
-    });
-    tabs.appendChild(button);
+  for (const { button, id } of backgroundTabButtons) {
+    button.setAttribute("aria-pressed", String(id === activeBackgroundTab));
   }
   scene.backgroundNames[activeBackgroundTab].forEach((name, index) => {
     const button = el("button", "thumb");
     button.type = "button";
     button.title = name;
     button.setAttribute("aria-label", `Background: ${name}`);
-    const selected = editorStore.get().environment.background;
     button.setAttribute("aria-pressed", String(selected.tab === activeBackgroundTab && selected.index === index));
     button.style.backgroundImage = `url(${scene.thumbFor(activeBackgroundTab, index)})`;
     button.addEventListener("click", () => {
       editorStore.set("environment.background", { tab: activeBackgroundTab, index }, { label: "Change background" });
-      renderBackgroundLibrary();
     });
     thumbs.appendChild(button);
     backgroundThumbButtons.push({ button, tab: activeBackgroundTab, index });
   });
+  if (hadThumbnailFocus) {
+    const selectedButton = backgroundThumbButtons.find((item) => item.tab === selected.tab && item.index === selected.index);
+    (selectedButton || backgroundThumbButtons[0])?.button.focus({ preventScroll: true });
+  }
 }
 libraryStack.append(tabs, thumbs);
 renderBackgroundLibrary();
@@ -572,15 +382,16 @@ syncers.push((state) => {
   const selectionKey = `${selected.tab}:${selected.index}`;
   if (selectionKey !== renderedBackgroundSelection) {
     renderedBackgroundSelection = selectionKey;
-    activeBackgroundTab = selected.tab;
-    renderBackgroundLibrary();
-    return;
+    if (activeBackgroundTab !== selected.tab) {
+      activeBackgroundTab = selected.tab;
+      renderBackgroundLibrary();
+      return;
+    }
   }
   for (const item of backgroundThumbButtons) {
     item.button.setAttribute("aria-pressed", String(item.tab === selected.tab && item.index === selected.index));
   }
 });
-}
 
 // Command bar and panel
 const undoButton = document.getElementById("undoButton");
@@ -592,18 +403,41 @@ const inspectorClose = document.getElementById("inspectorClose");
 const mobileEditorButton = document.getElementById("mobileEditorButton");
 const projectName = document.getElementById("projectName");
 const saveStatus = document.getElementById("saveStatus");
+const mobileLayout = matchMedia("(max-width: 900px)");
 presetsButton.setAttribute("aria-label", "Presets");
 exportButton.setAttribute("aria-label", "Export");
 
 undoButton.addEventListener("click", editorStore.undo);
 redoButton.addEventListener("click", editorStore.redo);
 
-function setPanel(open) {
+let panelReturnFocus = null;
+
+function setPanel(open, { trigger = null, restoreFocus = true } = {}) {
+  const wasOpen = editorStore.get().ui.panelOpen;
+  if (open === wasOpen) return;
+  if (open) panelReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement;
   editorStore.set("ui.panelOpen", open, { history: false, label: "Toggle inspector" });
+  if (open && mobileLayout.matches) {
+    window.requestAnimationFrame(() => inspectorClose.focus());
+  } else if (!open && restoreFocus) {
+    const fallback = mobileLayout.matches ? mobileEditorButton : inspectorToggle;
+    const target = panelReturnFocus instanceof HTMLElement && panelReturnFocus.isConnected ? panelReturnFocus : fallback;
+    panelReturnFocus = null;
+    window.requestAnimationFrame(() => target.focus());
+  }
 }
-inspectorToggle.addEventListener("click", () => setPanel(!editorStore.get().ui.panelOpen));
+inspectorToggle.addEventListener("click", () => setPanel(!editorStore.get().ui.panelOpen, { trigger: inspectorToggle }));
 inspectorClose.addEventListener("click", () => setPanel(false));
-mobileEditorButton.addEventListener("click", () => setPanel(true));
+mobileEditorButton.addEventListener("click", () => setPanel(true, { trigger: mobileEditorButton }));
+panelScrim.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (activePopover) {
+    closePopover();
+    return;
+  }
+  setPanel(false);
+});
 
 projectName.addEventListener("focus", () => editorStore.beginGesture());
 projectName.addEventListener("input", () => editorStore.set("project.name", projectName.value, { history: false, label: "Rename project" }));
@@ -614,6 +448,7 @@ projectName.addEventListener("keydown", (event) => {
 
 let activePopover = null;
 let activePopoverSync = null;
+let activePopoverTrigger = null;
 
 function updateGuide() {
   if (activePopover !== "export") {
@@ -636,25 +471,42 @@ function updateGuide() {
   scene.setExportAspect(aspect);
 }
 
-function closePopover() {
+function closePopover({ immediate = false, restoreFocus = true } = {}) {
+  const popover = popoverLayer.querySelector(".popover");
+  const trigger = activePopoverTrigger;
   activePopover = null;
   activePopoverSync = null;
-  popoverLayer.textContent = "";
+  activePopoverTrigger = null;
+  if (popover && !immediate) {
+    popover.classList.add("is-leaving");
+    window.setTimeout(() => popover.remove(), 150);
+  } else {
+    popoverLayer.textContent = "";
+  }
   frameGuide.style.display = "none";
   scene.setExportAspect(null);
   presetsButton.setAttribute("aria-expanded", "false");
   exportButton.setAttribute("aria-expanded", "false");
+  if (restoreFocus && trigger) window.setTimeout(() => trigger.focus(), 0);
 }
 
-function popoverShell(kind, title, description) {
-  closePopover();
+function popoverShell(kind, title, description, trigger) {
+  closePopover({ immediate: true, restoreFocus: false });
   activePopover = kind;
+  activePopoverTrigger = trigger;
   const popover = el("section", `popover popover--${kind}`);
   popover.setAttribute("role", "dialog");
-  popover.setAttribute("aria-label", title);
+  const titleId = `${kind}-popover-title`;
+  const descriptionId = `${kind}-popover-description`;
+  popover.setAttribute("aria-labelledby", titleId);
+  popover.setAttribute("aria-describedby", descriptionId);
   const header = el("header", "popover__header");
   const copy = el("div");
-  copy.append(el("h2", null, title), el("p", null, description));
+  const heading = el("h2", null, title);
+  const supportingCopy = el("p", null, description);
+  heading.id = titleId;
+  supportingCopy.id = descriptionId;
+  copy.append(heading, supportingCopy);
   const close = el("button", "icon-button");
   close.type = "button";
   close.setAttribute("aria-label", `Close ${title}`);
@@ -664,11 +516,12 @@ function popoverShell(kind, title, description) {
   const body = el("div", "popover__body");
   popover.append(header, body);
   popoverLayer.appendChild(popover);
+  window.requestAnimationFrame(() => close.focus());
   return { popover, body };
 }
 
 function exportPopover() {
-  const { popover, body } = popoverShell("export", "Export image", "Render the current composition at an exact size.");
+  const { popover, body } = popoverShell("export", "Export image", "Render the current composition at an exact size.", exportButton);
   exportButton.setAttribute("aria-expanded", "true");
 
   const formatStack = stack(body, "Format");
@@ -780,7 +633,7 @@ function exportPopover() {
 
 const COMPOSITION_PRESETS = [
   {
-    name: "Editorial blue", detail: "Silver · studio · hero", image: scene.thumbFor("studios", 2),
+    name: "Terracotta hero", detail: "Silver · warm studio", image: scene.thumbFor("studios", 2),
     patch: { device: { type: "phone", finish: "Silver" }, camera: { angle: "Hero", rotation: { x: -4, y: 24, z: 0 } }, environment: { lighting: "studio", intensity: 1.05, backgroundType: "flat", background: { tab: "studios", index: 2 }, float: false } },
   },
   {
@@ -798,7 +651,7 @@ const COMPOSITION_PRESETS = [
 ];
 
 function presetsPopover() {
-  const { body } = popoverShell("presets", "Composition presets", "Curated starting points that keep your source image intact.");
+  const { body } = popoverShell("presets", "Composition presets", "Curated starting points that keep your source image intact.", presetsButton);
   presetsButton.setAttribute("aria-expanded", "true");
   const grid = el("div", "preset-grid");
   for (const preset of COMPOSITION_PRESETS) {
@@ -827,13 +680,19 @@ document.addEventListener("pointerdown", (event) => {
   if (!activePopover) return;
   const popover = popoverLayer.querySelector(".popover");
   if (popover?.contains(event.target) || presetsButton.contains(event.target) || exportButton.contains(event.target)) return;
-  closePopover();
+  const focusableTarget = event.target instanceof Element && event.target.closest("button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+  closePopover({ restoreFocus: !focusableTarget });
 });
 
 window.addEventListener("resize", updateGuide);
 window.addEventListener("keydown", (event) => {
   const command = event.metaKey || event.ctrlKey;
   if (command && event.key.toLowerCase() === "z") {
+    const target = event.target;
+    const textContainer = target instanceof Element && target.closest("textarea, [contenteditable='true']");
+    const input = target instanceof Element ? target.closest("input") : null;
+    const textInput = input instanceof HTMLInputElement && ["text", "search", "url", "email", "tel", "password", "number"].includes(input.type);
+    if (textContainer || textInput) return;
     event.preventDefault();
     if (event.shiftKey) editorStore.redo();
     else editorStore.undo();
@@ -841,15 +700,12 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape") {
     if (activePopover) closePopover();
-    else if (matchMedia("(max-width: 760px)").matches) setPanel(false);
+    else if (matchMedia("(max-width: 900px)").matches) setPanel(false);
   }
 });
 
 scene.onRotationInput((rotation, fromUser, phase) => {
-  if (!fromUser) {
-    for (const axis of ["x", "y", "z"]) rotationScrubbers[axis]?.set(rotation[axis]);
-    return;
-  }
+  if (!fromUser) return;
   if (phase === "start") editorStore.beginGesture();
   if (phase === "update") {
     editorStore.patch({ camera: { angle: null, rotation } }, { history: false, label: "Rotate device" });
@@ -876,9 +732,12 @@ scene.onSourceChange(async (detail) => {
   toast(detail.kind === "website" ? "Website preview ready" : "Source image updated");
 });
 
-if (matchMedia("(max-width: 760px)").matches && editorStore.get().ui.panelOpen) {
-  editorStore.set("ui.panelOpen", false, { history: false });
+if (mobileLayout.matches && editorStore.get().ui.panelOpen) {
+  setPanel(false, { restoreFocus: false });
 }
+mobileLayout.addEventListener("change", (event) => {
+  if (event.matches && editorStore.get().ui.panelOpen) setPanel(false, { restoreFocus: false });
+});
 
 editorStore.subscribe((state, detail) => {
   scene.applyEditorState(state);
@@ -887,14 +746,19 @@ editorStore.subscribe((state, detail) => {
   undoButton.disabled = !detail.canUndo;
   redoButton.disabled = !detail.canRedo;
   if (document.activeElement !== projectName) projectName.value = state.project.name;
-  saveStatus.dataset.state = detail.saveStatus;
-  saveStatus.textContent = detail.saveStatus === "saving" ? "Saving locally…" : detail.saveStatus === "error" ? "Couldn’t save" : "Saved locally";
+  if (saveStatus.dataset.state !== detail.saveStatus) {
+    saveStatus.dataset.state = detail.saveStatus;
+    saveStatus.textContent = detail.saveStatus === "saving" ? "Saving locally…" : detail.saveStatus === "error" ? "Couldn’t save" : "Saved locally";
+  }
   document.body.classList.toggle("panel-closed", !state.ui.panelOpen);
   inspectorPanel.inert = !state.ui.panelOpen;
   inspectorPanel.setAttribute("aria-hidden", String(!state.ui.panelOpen));
   inspectorToggle.setAttribute("aria-expanded", String(state.ui.panelOpen));
   mobileEditorButton.setAttribute("aria-expanded", String(state.ui.panelOpen));
+  mobileEditorButton.setAttribute("aria-hidden", String(state.ui.panelOpen));
+  mobileEditorButton.tabIndex = state.ui.panelOpen ? -1 : 0;
 });
+document.documentElement.classList.remove("mobile-panel-closed");
 
 async function restorePersistedImage() {
   const state = editorStore.get();
