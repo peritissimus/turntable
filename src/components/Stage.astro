@@ -22,8 +22,9 @@ import Icon from "./Icon.astro";
   </div>
 </div>
 
-<div class="stage-hint" aria-hidden="true">
-  <span>Drag to rotate</span><i></i><span>Scroll to zoom</span><i></i><span>Drop or paste an image</span>
+<div class="stage-hint">
+  <span aria-hidden="true">Drag to rotate</span><i aria-hidden="true"></i><span aria-hidden="true">Scroll to zoom</span><i aria-hidden="true"></i>
+  <button class="stage-hint__action" id="stageUploadButton" type="button">Drop, paste or <u>upload an image</u></button>
 </div>
 
 <button class="mobile-editor-button" id="mobileEditorButton" type="button" aria-controls="panel" aria-expanded="false">
